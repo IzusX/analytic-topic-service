@@ -1,41 +1,49 @@
-# Аналитический сервис подбора тем для видеоконтента
+# Analytic Topic Service
 
-ВКР 09.03.03 ПИКД — «Разработка аналитического сервиса подбора тем для видеоконтента».
-Трактовка: под «подбором тем» понимается поиск и валидация перспективных тематических ниш по динамике каналов-авторов на основе открытых данных (апробация на YouTube).
+Сервис для поиска и валидации тематических ниш на основе динамики каналов видеоплатформ. Апробация на открытых данных YouTube (YouTube Data API v3).
 
-## Стек (зафиксирован)
+Анализирует каналы по запросу, считает метрики стабильности (`medianViews`, `spikeRatio`, `cv`, `consistency`) и отделяет стабильный рост от разового всплеска одного видео.
 
-`FastAPI + Vue 3 (Vite+TS+Tailwind+Naive UI+ECharts) + SQLite -> PostgreSQL + YouTube Data API v3 + GA4/Plausible`
-Деплой: `Render (api) + Vercel (web)`. ИИ: код без ограничений (30% в форме по самоотчету), текст — рерайт до 20%.
+## Стек
 
-## Архитектура (адаптер)
+`FastAPI + SQLAlchemy + SQLite / PostgreSQL + Vue 3 (Vite + TypeScript + Tailwind + ECharts)` · `YouTube Data API v3` · `GA4 / Plausible`
+
+## Архитектура
 
 ```
-frontend --REST--> backend -- DataSourceAdapter -> YouTubeAdapter (google-api-python-client)
-                         --> DB: channels / videos / snapshots
+frontend (Vue 3) --REST--> backend (FastAPI) -- DataSourceAdapter -> YouTubeAdapter
+                                              --> DB: channels / videos / snapshots
 ```
 
-## Этап 0 — фундамент (текущий)
+`DataSourceAdapter` — точка расширения на другие платформы. Первая реализация — `YouTubeAdapter`.
 
-* `backend/app/adapters/base.py` — интерфейс `DataSourceAdapter`
-* `backend/app/adapters/youtube.py` — `YouTubeAdapter` (public data, по API-ключу)
-* `backend/app/models/channel.py` — таблицы `channels / videos / snapshots`
-* `backend/app/config.py` + `database.py` + `main.py` — заглушка `/api/health`
+## Структура
 
-Далее: Этап 1 — метрики `median/spikeRatio/cv/consistency` и проверка гипотезы на 2 нишах.
+```
+backend/  — API, адаптеры, модели БД
+frontend/ — SPA (после Этапа 3)
+```
 
-## Быстрый старт (Этап 0)
+## Быстрый старт
 
 ```bash
+# backend
 cd backend
-python -m venv .venv && source .venv/bin/activate
+python -m venv .venv && source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 cp .env.example .env  # вставь YOUTUBE_API_KEY
-cp ../.env.example .env  # альтернатива
 uvicorn app.main:app --reload  # http://localhost:8000/docs
 ```
 
-Проверка адаптера (после вставки ключа):
+`.env`:
+
+```
+YOUTUBE_API_KEY=...
+DATABASE_URL=sqlite:///./app.db  # для прод: postgresql://...
+```
+
+Проверка адаптера:
+
 ```python
 from app.adapters.youtube import YouTubeAdapter
 from app.config import settings
@@ -43,6 +51,8 @@ a = YouTubeAdapter(settings.youtube_api_key)
 print(a.search_channels("faceless meditation", limit=5))
 ```
 
-## Коммиты
+## Деплой
 
-История по ходу — каждый этап отдельным коммитом.
+* backend → Render
+* frontend → Vercel
+* Аналитика — GA4 / Plausible (1 скрипт в `index.html`)
