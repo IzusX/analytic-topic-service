@@ -20,7 +20,11 @@ app.add_middleware(
 )
 
 from .routers.search import router as search_router
+from .routers.videos import router as videos_router
+from .routers.channels import router as channels_router
 app.include_router(search_router)
+app.include_router(videos_router)
+app.include_router(channels_router)
 
 @app.get("/")
 def root():

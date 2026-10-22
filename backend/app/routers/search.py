@@ -7,6 +7,8 @@ from ..config import settings
 from ..models.channel import Channel, Video
 from ..schemas.video import VideoOut, SearchVideosRequest, SearchVideosResponse
 from ..adapters.youtube import YouTubeAdapter
+from ..services.metrics import view_sub_ratio as calc_view_sub, like_view_ratio, comment_view_ratio
+from ..services.sync import upsert_video as sync_upsert_video
 
 router = APIRouter(prefix="/api", tags=["search"])
 
@@ -102,21 +104,28 @@ def search_videos(
     for av in avideos:
         _upsert_video(db, av)
 
-    # build response with derived view_sub_ratio
+    # фильтры Этап 1.4 — после обогащения (search.list их не поддерживает по views/subs)
+    if req.min_views is not None:
+        avideos = [v for v in avideos if v.view_count is not None and v.view_count >= req.min_views]
+    if req.max_views is not None:
+        avideos = [v for v in avideos if v.view_count is not None and v.view_count <= req.max_views]
+    if req.min_subscribers is not None:
+        avideos = [v for v in avideos if v.channel_subscriber_count is not None and v.channel_subscriber_count >= req.min_subscribers]
+    if req.max_subscribers is not None:
+        avideos = [v for v in avideos if v.channel_subscriber_count is not None and v.channel_subscriber_count <= req.max_subscribers]
+
+    # build response with derived ratios (Этап 1.2 — добавляем like/comment ratios)
     out: list[VideoOut] = []
     for av in avideos:
-        ratio = None
-        if av.view_count is not None and av.channel_subscriber_count:
-            try:
-                ratio = av.view_count / av.channel_subscriber_count if av.channel_subscriber_count else None
-            except Exception:
-                ratio = None
         out.append(VideoOut(
             id=av.id, title=av.title, published_at=av.published_at, duration=av.duration,
             is_shorts=av.is_shorts, view_count=av.view_count, like_count=av.like_count,
             comment_count=av.comment_count, thumbnail_url=av.thumbnail_url,
             channel_id=av.channel_id, channel_title=av.channel_title,
-            channel_subscriber_count=av.channel_subscriber_count, view_sub_ratio=ratio,
+            channel_subscriber_count=av.channel_subscriber_count,
+            view_sub_ratio=calc_view_sub(av.view_count, av.channel_subscriber_count),
+            like_view_ratio=like_view_ratio(av.like_count, av.view_count),
+            comment_view_ratio=comment_view_ratio(av.comment_count, av.view_count),
         ))
 
     # quota estimate: 100 search + ~1 videos (50 ids) + ~1 channels (50 ids) — batch

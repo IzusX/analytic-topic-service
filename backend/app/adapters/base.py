@@ -62,6 +62,11 @@ class DataSourceAdapter(ABC):
         """Поиск видео по ключу; обогащает через videos.list+channels.list."""
         ...
 
+    @abstractmethod
+    def get_video(self, video_id: str) -> AdapterVideo | None:
+        """Одна карточка видео (videos.list id=...)."""
+        ...
+
     # Комбинированный хелпер
     def search_with_videos(self, query: str, limit: int = 20, videos_per_channel: int = 30):
         channels = self.search_channels(query, limit)

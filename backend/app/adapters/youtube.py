@@ -81,6 +81,20 @@ class YouTubeAdapter(DataSourceAdapter):
         res = self._get_channels_by_ids([channel_id])
         return res[0] if res else None
 
+    def get_video(self, video_id: str) -> AdapterVideo | None:
+        res = self._get_videos_by_ids([video_id])
+        if not res:
+            return None
+        v = res[0]
+        # enrich subs for single card
+        if v.channel_id:
+            ch = self.get_channel(v.channel_id)
+            if ch:
+                v.channel_subscriber_count = ch.subscriber_count
+                if not v.channel_title:
+                    v.channel_title = ch.title
+        return v
+
     def get_videos(self, channel_id: str, limit: int = 50) -> list[AdapterVideo]:
         ch = self.get_channel(channel_id)
         if not ch or not ch.uploads_playlist_id:
