@@ -13,20 +13,28 @@ class AdapterChannel:
     view_count: int | None
     video_count: int | None
     uploads_playlist_id: str | None
+    thumbnail_url: str | None = None
 
 @dataclass
 class AdapterVideo:
     id: str
     title: str
     published_at: datetime | None
-    duration: str | None
-    view_count: int | None
-    like_count: int | None
-    comment_count: int | None
+    duration: str | None               # ISO8601 e.g. PT5M33S
+    is_shorts: bool = False
+    view_count: int | None = None
+    like_count: int | None = None
+    comment_count: int | None = None
+    thumbnail_url: str | None = None
+    channel_id: str | None = None
+    channel_title: str | None = None
+    channel_subscriber_count: int | None = None
 
 
 class DataSourceAdapter(ABC):
-    """Расширяемость: YouTubeAdapter — первая реализация; TikTok/VK подключаются заменой адаптера."""
+    """Расширяемость: YouTubeAdapter — первая реализация; TikTok/VK подключаются заменой адаптера.
+    Поддерживает 2 режима ключа: сервисный (backend/.env) и пользовательский (X-YouTube-Key) — задел под Этап 1.5.
+    """
 
     @abstractmethod
     def search_channels(self, query: str, limit: int = 20) -> list[AdapterChannel]:
@@ -40,7 +48,21 @@ class DataSourceAdapter(ABC):
     def get_videos(self, channel_id: str, limit: int = 50) -> list[AdapterVideo]:
         ...
 
-    # Комбинированный хелпер для MVP — не обязателен, но удобен для /api/search
+    # --- Новые методы для флоу "поиск видео -> карточка видео -> аналитика канала" ---
+
+    @abstractmethod
+    def search_videos(
+        self,
+        query: str,
+        limit: int = 20,
+        published_after: datetime | None = None,
+        published_before: datetime | None = None,
+        relevance_language: str | None = None,
+    ) -> list[AdapterVideo]:
+        """Поиск видео по ключу; обогащает через videos.list+channels.list."""
+        ...
+
+    # Комбинированный хелпер
     def search_with_videos(self, query: str, limit: int = 20, videos_per_channel: int = 30):
         channels = self.search_channels(query, limit)
         result = []

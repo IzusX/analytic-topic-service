@@ -17,6 +17,7 @@ class Channel(Base):
     video_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     uploads_playlist_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    thumbnail_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
@@ -33,6 +34,11 @@ class Video(Base):
     title: Mapped[str] = mapped_column(String(512), default="")
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     duration: Mapped[str | None] = mapped_column(String(32), nullable=True)  # ISO 8601 PT...
+    is_shorts: Mapped[bool] = mapped_column(default=False)
+    thumbnail_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    # denormalized for fast video-card without JOIN — updated on sync
+    channel_title: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    channel_subscriber_count: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
 
     view_count: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     like_count: Mapped[int | None] = mapped_column(BigInteger, nullable=True)

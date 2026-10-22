@@ -6,9 +6,9 @@ import app.models.channel  # ensure models imported
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
-    title="Аналитический сервис подбора тем для видеоконтента",
-    description="Этап 0 — фундамент: адаптер + БД. Реализация метрик и API — Этапы 1-2.",
-    version="0.0.1",
+    title="Analytic Topic Service",
+    description="Поиск видео + карточка видео/канала + фильтры (YouTube Data API v3, public data).",
+    version="0.1.0",
 )
 
 app.add_middleware(
@@ -19,10 +19,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from .routers.search import router as search_router
+app.include_router(search_router)
+
 @app.get("/")
 def root():
-    return {"service": "analytic-topic-service", "stage": 0, "docs": "/docs", "health": "/api/health"}
+    return {"service": "analytic-topic-service", "docs": "/docs", "health": "/api/health"}
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "stage": 0}
+    return {"status": "ok"}
