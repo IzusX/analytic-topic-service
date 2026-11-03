@@ -1,133 +1,50 @@
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends
+from pydantic import ValidationError
 from sqlalchemy.orm import Session
-from datetime import datetime, timezone
 
 from ..database import get_db
-from ..config import settings
-from ..models.channel import Channel, Video
-from ..schemas.video import VideoOut, SearchVideosRequest, SearchVideosResponse
-from ..adapters.youtube import YouTubeAdapter
-from ..services.metrics import view_sub_ratio as calc_view_sub, like_view_ratio, comment_view_ratio
-from ..services.sync import upsert_video as sync_upsert_video
+from ..schemas.common import utc_now
+from ..schemas.video import SearchVideosRequest, SearchVideosResponse
+from ..services.presentation import video_out
+from ..services.search import freeze_search, matches_filters
+from ..services.source import AdapterFactory, api_error, get_adapter_factory, source_call
+from ..services.sync import upsert_channel, upsert_video
 
 router = APIRouter(prefix="/api", tags=["search"])
 
-def _api_key(header_key: str | None) -> str:
-    # Этап 1: сервисный ключ; задел под Этап 1.5 — X-YouTube-Key от пользователя
-    key = (header_key or "").strip() or settings.youtube_api_key.strip()
-    if not key:
-        raise HTTPException(status_code=500, detail="YOUTUBE_API_KEY not configured (backend/.env or X-YouTube-Key header)")
-    return key
-
-def _adapter(x_youtube_key: str | None = Header(default=None, alias="X-YouTube-Key")):
-    return YouTubeAdapter(_api_key(x_youtube_key))
-
-def _upsert_channel(db: Session, ach) -> Channel:
-    ch = db.get(Channel, ach.id)
-    if ch is None:
-        ch = Channel(id=ach.id)
-        db.add(ch)
-    ch.title = ach.title
-    ch.description = ach.description or ""
-    ch.published_at = ach.published_at
-    ch.country = ach.country
-    ch.subscriber_count = ach.subscriber_count
-    ch.view_count = ach.view_count
-    ch.video_count = ach.video_count
-    ch.uploads_playlist_id = ach.uploads_playlist_id
-    ch.thumbnail_url = ach.thumbnail_url
-    ch.last_synced_at = datetime.now(timezone.utc)
-    db.commit()
-    db.refresh(ch)
-    return ch
-
-def _upsert_video(db: Session, av, channel_subs: dict | None = None):
-    v = db.get(Video, av.id)
-    if v is None:
-        v = Video(id=av.id, channel_id=av.channel_id or "unknown")
-        db.add(v)
-    # ensure channel exists as stub if needed
-    cid = av.channel_id
-    if cid and db.get(Channel, cid) is None and av.channel_title:
-        # stub channel row so FK holds; will be enriched on next channel sync
-        stub = Channel(id=cid, title=av.channel_title or "", subscriber_count=av.channel_subscriber_count)
-        db.add(stub)
-    v.title = av.title
-    v.published_at = av.published_at
-    v.duration = av.duration
-    v.is_shorts = bool(av.is_shorts)
-    v.thumbnail_url = av.thumbnail_url
-    v.channel_title = av.channel_title
-    v.channel_subscriber_count = av.channel_subscriber_count
-    v.view_count = av.view_count
-    v.like_count = av.like_count
-    v.comment_count = av.comment_count
-    if av.channel_id:
-        v.channel_id = av.channel_id
-    db.commit()
-    return v
 
 @router.post("/search/videos", response_model=SearchVideosResponse)
 def search_videos(
     req: SearchVideosRequest,
     db: Session = Depends(get_db),
-    x_youtube_key: str | None = Header(default=None, alias="X-YouTube-Key"),
+    factory: AdapterFactory = Depends(get_adapter_factory),
 ):
-    adapter = YouTubeAdapter(_api_key(x_youtube_key))
     try:
-        avideos = adapter.search_videos(
-            query=req.query,
-            limit=req.limit,
-            published_after=req.published_after,
-            published_before=req.published_before,
-            relevance_language=req.relevance_language,
-        )
-    except Exception as e:
-        # surface quota errors cleanly
-        msg = str(e)
-        if "quotaExceeded" in msg or "quota" in msg.lower():
-            raise HTTPException(status_code=429, detail=f"YouTube quota exceeded: {msg}")
-        raise HTTPException(status_code=502, detail=f"YouTube API error: {msg}")
-
-    # cache channels + videos
-    # upsert channels for those videos
-    seen_cids = set()
-    for av in avideos:
-        if av.channel_id and av.channel_id not in seen_cids:
-            seen_cids.add(av.channel_id)
-            # channel already fetched for subs inside search_videos; ensure row exists
-            if db.get(Channel, av.channel_id) is None:
-                # create stub then enrich via get_channel lazily is optional; we have title/subs already
-                ch = Channel(id=av.channel_id, title=av.channel_title or "", subscriber_count=av.channel_subscriber_count)
-                db.add(ch)
+        applied = freeze_search(req, utc_now())
+    except ValidationError:
+        raise api_error(422, "invalid_search_dates", "Проверьте границы периода публикации.") from None
+    adapter = factory()
+    initial_quota = adapter.quota_used_estimate
+    page = source_call(
+        adapter.search_videos, query=applied.query, limit=applied.limit,
+        published_after=applied.published_after, published_before=applied.published_before,
+        relevance_language=applied.relevance_language, page_token=applied.page_token,
+    )
+    fetched_at = utc_now()
+    # Reuse batched source channel data; never issue one get_channel call per result.
+    for channel in page.channels:
+        upsert_channel(db, channel, fetched_at)
+    unique = {}
+    for video in page.videos:
+        unique.setdefault(video.id, video)
+    videos = list(unique.values())
+    for video in videos:
+        upsert_video(db, video, fetched_at)
     db.commit()
-    for av in avideos:
-        _upsert_video(db, av)
-
-    # фильтры Этап 1.4 — после обогащения (search.list их не поддерживает по views/subs)
-    if req.min_views is not None:
-        avideos = [v for v in avideos if v.view_count is not None and v.view_count >= req.min_views]
-    if req.max_views is not None:
-        avideos = [v for v in avideos if v.view_count is not None and v.view_count <= req.max_views]
-    if req.min_subscribers is not None:
-        avideos = [v for v in avideos if v.channel_subscriber_count is not None and v.channel_subscriber_count >= req.min_subscribers]
-    if req.max_subscribers is not None:
-        avideos = [v for v in avideos if v.channel_subscriber_count is not None and v.channel_subscriber_count <= req.max_subscribers]
-
-    # build response with derived ratios (Этап 1.2 — добавляем like/comment ratios)
-    out: list[VideoOut] = []
-    for av in avideos:
-        out.append(VideoOut(
-            id=av.id, title=av.title, published_at=av.published_at, duration=av.duration,
-            is_shorts=av.is_shorts, view_count=av.view_count, like_count=av.like_count,
-            comment_count=av.comment_count, thumbnail_url=av.thumbnail_url,
-            channel_id=av.channel_id, channel_title=av.channel_title,
-            channel_subscriber_count=av.channel_subscriber_count,
-            view_sub_ratio=calc_view_sub(av.view_count, av.channel_subscriber_count),
-            like_view_ratio=like_view_ratio(av.like_count, av.view_count),
-            comment_view_ratio=comment_view_ratio(av.comment_count, av.view_count),
-        ))
-
-    # quota estimate: 100 search + ~1 videos (50 ids) + ~1 channels (50 ids) — batch
-    est = 100 + (1 if avideos else 0) + (1 if seen_cids else 0)
-    return SearchVideosResponse(query=req.query, videos=out, quota_used_estimate=est)
+    matches = [video for video in videos if matches_filters(video, applied)]
+    return SearchVideosResponse(
+        query=applied.query, applied=applied, videos=[video_out(video) for video in matches],
+        fetched_at=fetched_at, next_page_token=page.next_page_token,
+        items_scanned=page.items_scanned, matched_count=len(matches),
+        quota_used_estimate=adapter.quota_used_estimate - initial_quota,
+    )

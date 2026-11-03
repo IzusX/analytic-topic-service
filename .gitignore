@@ -4,6 +4,7 @@ __pycache__/
 *.pyo
 .venv/
 venv/
+.pytest_cache/
 .env
 *.db
 *.sqlite
@@ -24,3 +25,7 @@ dist-ssr/
 # Logs
 *.log
 npm-debug.log*
+
+# Local frontend planning documents
+/FRONTEND_DECISIONS.md
+/FRONTEND_IMPLEMENTATION_PLAN.md

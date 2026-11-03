@@ -1,17 +1,20 @@
-from pydantic_settings import BaseSettings
+from pathlib import Path
+
+from pydantic import SecretStr
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+BACKEND_DIR = Path(__file__).resolve().parents[1]
+
 
 class Settings(BaseSettings):
-    youtube_api_key: str = ""
-    database_url: str = "sqlite:///./app.db"
+    youtube_api_key: SecretStr = SecretStr("")
+    database_url: str = f"sqlite:///{BACKEND_DIR / 'app.db'}"
 
-    # MVP thresholds — tunable without code change
-    spike_ratio_threshold: float = 5.0
-    cv_threshold: float = 1.0
-    min_median_views: int = 1000
-    min_uploads_per_week: float = 2.0
+    model_config = SettingsConfigDict(
+        env_file=BACKEND_DIR / ".env",
+        env_file_encoding="utf-8",
+        extra="ignore",  # Legacy threshold settings do not change descriptive metrics.
+    )
 
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
 
 settings = Settings()

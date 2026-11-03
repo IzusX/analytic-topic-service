@@ -1,12 +1,12 @@
-"""Метрики для карточки видео (1.2) и канала (1.3).
+"""Descriptive metrics for explicitly selected videos.
 
-Источники:
-- medianViews, meanViews, std, cv=std/mean, spikeRatio=max/median, consistency=>=0.5*median
-- view/sub, like/view, comment/view, anomaly=views/median
-- Пороги из Settings: spike_ratio_threshold=5.0, cv_threshold=1.0, min_median_views=1000
+- medianViews, meanViews, population std, cv=std/mean, spikeRatio=max/median
+- consistency = fraction with views >= 0.5*median
+- view/sub, like/view, comment/view, views/median
+
+Selection rules live outside these formulas. No success verdict or sufficiency threshold.
 """
 from __future__ import annotations
-import math
 import statistics
 from dataclasses import dataclass
 
@@ -26,99 +26,72 @@ class ChannelMetrics:
 
 def _views_list(videos) -> list[int]:
     """videos: iterable of objects/dicts with view_count."""
-    out: list[int] = []
-    for v in videos:
-        vc = v.view_count if hasattr(v, "view_count") else v.get("view_count")
-        if vc is not None and vc >= 0:
-            out.append(int(vc))
-    return out
+    values = []
+    for video in videos:
+        count = video.view_count if hasattr(video, "view_count") else video.get("view_count")
+        if count is not None and count >= 0:
+            values.append(int(count))
+    return values
 
 
 def median_views(views: list[int]) -> float | None:
-    if not views:
-        return None
-    return float(statistics.median(views))
+    return float(statistics.median(views)) if views else None
 
 
 def mean_views(views: list[int]) -> float | None:
-    if not views:
-        return None
-    return float(statistics.mean(views))
+    return float(statistics.mean(views)) if views else None
 
 
 def std_views(views: list[int]) -> float | None:
-    if len(views) < 2:
-        return 0.0 if views else None
-    # population std — стабильнее на малых выборках канала (30 точек)
-    return float(statistics.pstdev(views))
+    # Population standard deviation; one observed value has deviation zero.
+    return float(statistics.pstdev(views)) if views else None
 
 
 def cv_value(std: float | None, mean: float | None) -> float | None:
-    if std is None or mean is None or mean == 0:
-        return None
-    return std / mean
+    return safe_ratio(std, mean)
 
 
 def spike_ratio_value(max_views: int | None, median: float | None) -> float | None:
-    if max_views is None or median is None or median == 0:
-        return None
-    return max_views / median
+    return safe_ratio(max_views, median)
 
 
 def consistency_ratio(views: list[int], median: float | None) -> float | None:
-    if not views or median is None or median == 0:
+    if not views or median is None:
         return None
-    thr = median * 0.5
-    ok = sum(1 for v in views if v >= thr)
-    return ok / len(views)
+    # A zero median still defines the threshold zero; this is not division by median.
+    return sum(value >= median * 0.5 for value in views) / len(views)
 
 
 def channel_metrics(videos) -> ChannelMetrics:
     views = _views_list(videos)
     if not views:
         return ChannelMetrics(0, None, None, None, None, None, None, None, None)
-    med = median_views(views)
-    mean = mean_views(views)
-    std = std_views(views)
+    median, mean, std = median_views(views), mean_views(views), std_views(views)
     return ChannelMetrics(
-        count=len(views),
-        median_views=med,
-        mean_views=mean,
-        std_views=std,
-        cv=cv_value(std, mean),
-        spike_ratio=spike_ratio_value(max(views), med),
-        consistency=consistency_ratio(views, med),
-        max_views=max(views),
-        min_views=min(views),
+        count=len(views), median_views=median, mean_views=mean, std_views=std,
+        cv=cv_value(std, mean), spike_ratio=spike_ratio_value(max(views), median),
+        consistency=consistency_ratio(views, median), max_views=max(views), min_views=min(views),
     )
 
 
-def like_view_ratio(like_count: int | None, view_count: int | None) -> float | None:
-    if like_count is None or view_count is None or view_count == 0:
+def safe_ratio(numerator: int | float | None, denominator: int | float | None) -> float | None:
+    if numerator is None or numerator < 0 or denominator is None or denominator <= 0:
         return None
-    return like_count / view_count
+    return numerator / denominator
+
+
+def like_view_ratio(like_count: int | None, view_count: int | None) -> float | None:
+    return safe_ratio(like_count, view_count)
 
 
 def comment_view_ratio(comment_count: int | None, view_count: int | None) -> float | None:
-    if comment_count is None or view_count is None or view_count == 0:
-        return None
-    return comment_count / view_count
+    return safe_ratio(comment_count, view_count)
 
 
 def view_sub_ratio(view_count: int | None, subs: int | None) -> float | None:
-    if view_count is None or not subs:
-        return None
-    return view_count / subs
+    return safe_ratio(view_count, subs)
 
 
 def anomaly_ratio(view_count: int | None, median: float | None) -> float | None:
-    if view_count is None or median is None or median == 0:
-        return None
-    return view_count / median
-
-
-def is_anomaly(view_count: int | None, median: float | None, threshold: float = 3.0) -> bool | None:
-    r = anomaly_ratio(view_count, median)
-    if r is None:
-        return None
-    return r >= threshold
+    """Numerical comparison only; retained helper name, no anomaly verdict."""
+    return safe_ratio(view_count, median)

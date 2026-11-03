@@ -1,58 +1,108 @@
 # Analytic Topic Service
 
-Сервис для поиска и валидации тематических ниш на основе динамики каналов видеоплатформ. Апробация на открытых данных YouTube (YouTube Data API v3).
+Поиск публичных видео YouTube и описательная аналитика каналов для исследования тем видеоконтента. Сценарий: найти видео, изучить выборку его канала, вернуться к выдаче.
 
-Анализирует каналы по запросу, считает метрики стабильности (`medianViews`, `spikeRatio`, `cv`, `consistency`) и отделяет стабильный рост от разового всплеска одного видео.
+Сервис считает медиану, среднее, разброс просмотров и числовые отношения. Не выдаёт оценочные вердикты успешности, не обещает рост и не представляет накопленные просмотры как текущую динамику.
 
-## Стек
+Сейчас реализован backend. Интерфейс Vue, его сессионный кеш и интеграция ещё в плане.
 
-`FastAPI + SQLAlchemy + SQLite / PostgreSQL + Vue 3 (Vite + TypeScript + Tailwind + ECharts)` · `YouTube Data API v3` · `GA4 / Plausible`
+## Стек и устройство
 
-## Архитектура
+- Backend: FastAPI, SQLAlchemy, SQLite; дальнейший переход на PostgreSQL предусмотрен моделями, но подключение не проверено.
+- Источник: YouTube Data API v3, только публичные данные.
+- Планируемый frontend: Vue 3, TypeScript, Vite, Vue Router, Pinia, Tailwind, Naive UI, ECharts.
 
+```text
+frontend (Vue, planned) --REST--> backend (FastAPI)
+                               -- DataSourceAdapter -> YouTubeAdapter
+                               -- SQLite: channels / videos / snapshots / channel_analyses
 ```
-frontend (Vue 3) --REST--> backend (FastAPI) -- DataSourceAdapter -> YouTubeAdapter
-                                              --> DB: channels / videos / snapshots
-```
 
-`DataSourceAdapter` — точка расширения на другие платформы. Первая реализация — `YouTubeAdapter`.
+`DataSourceAdapter` отделяет источник от вычислений. Поисковые записи не подменяют подтверждённую выборку загрузок канала.
 
 ## Структура
 
-```
-backend/  — API, адаптеры, модели БД
-frontend/ — SPA (после Этапа 3)
+```text
+backend/
+  app/          API, источник, модели, отбор и метрики
+  tests/        тесты без живых запросов к YouTube
+  contracts/    сгенерированные OpenAPI и TypeScript-типы
+  API_CONTRACT.md
 ```
 
-## Быстрый старт
+## Локальный запуск
+
+Нужен Python 3.10+; текущая проверка выполнена на Python 3.14. Для миграции старой SQLite нужна SQLite 3.35+.
 
 ```bash
-# backend
 cd backend
-python -m venv .venv && source .venv/bin/activate  # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-cp .env.example .env  # вставь YOUTUBE_API_KEY
-uvicorn app.main:app --reload  # http://localhost:8000/docs
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+# Если .env ещё не существует:
+test -f .env || cp .env.example .env
 ```
 
-`.env`:
+Настройте `YOUTUBE_API_KEY` в локальном `backend/.env` или серверном окружении. Ключ не нужен для тестов, `/api/health` и просмотра схемы. Без настроенного источника поиск возвращает 503. Персональный ключ через `X-YouTube-Key` пока не поддерживается.
 
-```
-YOUTUBE_API_KEY=...
-DATABASE_URL=sqlite:///./app.db  # для прод: postgresql://...
-```
+По умолчанию используется `backend/app.db`. Для другой БД задайте `DATABASE_URL` на сервере. Ключ и `.env` не должны попадать в Git, URL клиента или сообщения об ошибках.
 
-Проверка адаптера:
+### Новая БД
 
-```python
-from app.adapters.youtube import YouTubeAdapter
-from app.config import settings
-a = YouTubeAdapter(settings.youtube_api_key)
-print(a.search_channels("faceless meditation", limit=5))
+```bash
+python -m app.migrate
+python -m uvicorn app.main:app --reload
 ```
 
-## Деплой
+API: `http://127.0.0.1:8000`, документация: `http://127.0.0.1:8000/docs`.
 
-* backend → Render
-* frontend → Vercel
-* Аналитика — GA4 / Plausible (1 скрипт в `index.html`)
+### Существующая SQLite
+
+Импорт/startup не пересоздаёт и не мигрирует таблицы. Сначала проверьте схему и выполните явную миграцию с резервной копией:
+
+```bash
+python -m app.migrate --check
+mkdir -p ../backups
+python -m app.migrate --backup ../backups/before-v2.sqlite3
+```
+
+Имя резервной копии должно быть новым; существующий файл не перезаписывается. Миграция сохраняет строки, добавляет числовую длительность и подтверждённый кеш анализа, удаляет прежнюю недостоверную классификацию видео. Известные числовые длительности сохраняются. Изменения схемы и backfill транзакционные. Для необычной/частичной старой схемы миграция откажется от записи и потребует её проверки.
+
+PostgreSQL-ветка миграции требует заранее созданной внешней резервной копии и `--backup-confirmed`; реальное подключение и PostgreSQL-драйвер в этой проверке не настраивались.
+
+## Основные API
+
+| Эндпоинт | Назначение |
+|---|---|
+| `POST /api/search/videos` | Необязательная тема, язык-предпочтение, точные интервалы длительности/подписчиков, одна страница поиска |
+| `GET /api/channels/{id}` | Подтверждённая ограниченная выборка, описательные показатели, данные для диаграммы |
+| `GET /api/videos/{id}` | Необязательная прямая карточка, без сравнения короткого видео с неподходящей выборкой |
+| `GET /api/health` | Проверка процесса и версии схемы |
+
+Подробные поля, ошибки, правила пагинации и свежести: [backend/API_CONTRACT.md](backend/API_CONTRACT.md).
+
+Поиск обрабатывает одну страницу до 50 кандидатов. После фильтров карточек может не быть; токен продолжения при этом сохраняется. `relevanceLanguage` не является строгим языковым фильтром, запрос не переводится. Поведение живой выдачи без текстовой темы ещё не проверено; сборка запроса без `q` проверена в SDK и тестах.
+
+Аналитика берёт до 30 последних доступных видео строго длиннее 180 секунд, просмотрев до 200 записей загрузок / четырёх страниц. Неизвестные просмотры не заменяются более старым видео. Размер, даты, причины остановки и пропуски возвращаются явно. Это отбор по длительности, не распознавание Shorts.
+
+Повтор подтверждённого анализа не обращается к источнику. Обновление — только через `force_sync=true`; ошибка не стирает прежний успешный снимок. Бюджет клиентского Pinia/sessionStorage-кеша будет реализован отдельно.
+
+## Тесты и контракт
+
+```bash
+cd backend  # если вы ещё в корне проекта
+source .venv/bin/activate
+python -m pip install -r requirements-dev.txt
+python -m pytest -q
+python -m app.export_contracts
+```
+
+Тесты блокируют внешний сетевой доступ и используют подставной источник. Покрываются точные границы, календарные периоды, пагинация, порядок и стоимость пакетных операций, неполные данные, кеш, безопасные ошибки, миграция/откат и сохранность резервной копии SQLite.
+
+`contracts/openapi.json` и `contracts/api.ts` генерируются из одной схемы; тесты обнаруживают рассинхронизацию. Компиляция TypeScript будет проверена при подготовке frontend.
+
+Реальные данные/квота YouTube и PostgreSQL пока не проверены. Синтаксическая проверка не подменяет тесты и запуск API.
+
+## Развёртывание
+
+План: API на Render, frontend на Vercel. Подключение GA4/Plausible относится к дальнейшей интеграции интерфейса; сейчас аналитический скрипт не установлен.

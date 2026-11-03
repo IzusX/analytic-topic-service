@@ -1,105 +1,78 @@
-"""Этап 1.2 — карточка видео: GET /api/videos/{id} с аномалией vs медиана канала.
+"""Optional direct video endpoint. Short videos are never compared to the >180s sample."""
+from typing import Annotated
 
-Медиана считается по последним 30 LONG-видео канала (is_shorts=false).
-Если LONG < 3 — метрики аномалии null (недостаточно данных).
-Порог аномалии 3.0 вынесен как дефолт; фронт показывает бейдж при is_anomaly.
-"""
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Path
+from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..config import settings
-from ..models.channel import Channel, Video
-from ..schemas.video import VideoCardOut
-from ..adapters.youtube import YouTubeAdapter
-from ..services.metrics import anomaly_ratio, is_anomaly, like_view_ratio, comment_view_ratio, view_sub_ratio, median_views
-from ..services.sync import upsert_channel, upsert_video
+from ..models.channel import Video
+from ..schemas.common import as_utc, utc_now
+from ..schemas.video import VideoCardOut, VideoOut
+from ..services.analysis import load_channel_analysis
+from ..services.presentation import video_out
+from ..services.source import AdapterFactory, api_error, get_adapter_factory, source_call
+from ..services.sync import upsert_video
 
 router = APIRouter(prefix="/api/videos", tags=["videos"])
 
-ANOMALY_THRESHOLD = 3.0
-LONG_LIMIT_FOR_MEDIAN = 30
-
-def _api_key(header_key: str | None) -> str:
-    key = (header_key or "").strip() or settings.youtube_api_key.strip()
-    if not key:
-        raise HTTPException(status_code=500, detail="YOUTUBE_API_KEY not configured (backend/.env or X-YouTube-Key)")
-    return key
-
-def _to_card(av, channel_median: float | None, long_count: int | None) -> VideoCardOut:
-    vc = av.view_count
-    med = channel_median
-    return VideoCardOut(
-        id=av.id, title=av.title, published_at=av.published_at, duration=av.duration,
-        is_shorts=bool(av.is_shorts), view_count=vc, like_count=av.like_count,
-        comment_count=av.comment_count, thumbnail_url=av.thumbnail_url,
-        channel_id=av.channel_id, channel_title=av.channel_title,
-        channel_subscriber_count=av.channel_subscriber_count,
-        view_sub_ratio=view_sub_ratio(vc, av.channel_subscriber_count),
-        like_view_ratio=like_view_ratio(av.like_count, vc),
-        comment_view_ratio=comment_view_ratio(av.comment_count, vc),
-        channel_median_views=med,
-        channel_long_count=long_count,
-        anomaly_ratio=anomaly_ratio(vc, med),
-        is_anomaly=is_anomaly(vc, med, ANOMALY_THRESHOLD),
-        anomaly_threshold=ANOMALY_THRESHOLD,
-    )
 
 @router.get("/{video_id}", response_model=VideoCardOut)
 def get_video_card(
-    video_id: str,
+    video_id: Annotated[str, Path(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")],
     db: Session = Depends(get_db),
-    x_youtube_key: str | None = Header(default=None, alias="X-YouTube-Key"),
+    factory: AdapterFactory = Depends(get_adapter_factory),
+    force_sync: bool = False,
 ):
-    key = _api_key(x_youtube_key)
-    adapter = YouTubeAdapter(key)
-
-    # 1) try DB cache first for faster second hit
     cached = db.get(Video, video_id)
-    # always fetch fresh adapter data for accuracy (statistics change) — but reuse channel median logic
-    try:
-        av = adapter.get_video(video_id)
-    except Exception as e:
-        msg = str(e)
-        if "quotaExceeded" in msg or "quota" in msg.lower():
-            raise HTTPException(status_code=429, detail=f"YouTube quota exceeded: {msg}")
-        raise HTTPException(status_code=502, detail=f"YouTube API error: {msg}")
+    adapter = None
+    video = None
+    if cached is not None and cached.source_payload and cached.fetched_at and not force_sync:
+        try:
+            video = video_out(VideoOut.model_validate(cached.source_payload))
+        except ValidationError:
+            pass
+    from_cache = video is not None
+    fetched_at = as_utc(cached.fetched_at) if from_cache else utc_now()
+    initial_quota = 0
+    if video is None:
+        adapter = factory()
+        initial_quota = adapter.quota_used_estimate
+        fresh = source_call(adapter.get_video, video_id)
+        if fresh is None:
+            raise api_error(404, "video_not_found", "Видео не найдено или недоступно.")
+        fetched_at = utc_now()
+        video = video_out(fresh)
+        upsert_video(db, fresh, fetched_at)
 
-    if av is None:
-        raise HTTPException(status_code=404, detail="Video not found")
-
-    # upsert video + channel
-    upsert_video(db, av)
-    # need channel's last 30 LONG to compute median
-    channel_id = av.channel_id
-    channel_median: float | None = None
-    long_count: int | None = None
-
-    if channel_id:
-        # try to ensure we have enough LONG videos cached — if cache thin, fetch via adapter
-        cached_longs = db.query(Video).filter(Video.channel_id == channel_id, Video.is_shorts == False).order_by(Video.published_at.desc()).limit(LONG_LIMIT_FOR_MEDIAN * 2).all()
-        # if not enough LONG in DB, sync from YouTube
-        if len(cached_longs) < 5:
-            try:
-                fresh = adapter.get_videos(channel_id, limit=LONG_LIMIT_FOR_MEDIAN)
-                # upsert fresh batch
-                for fv in fresh:
-                    upsert_video(db, fv)
-                # also sync channel row
-                ch = adapter.get_channel(channel_id)
-                if ch:
-                    upsert_channel(db, ch)
-                cached_longs = db.query(Video).filter(Video.channel_id == channel_id, Video.is_shorts == False).order_by(Video.published_at.desc()).limit(LONG_LIMIT_FOR_MEDIAN).all()
-            except Exception:
-                # median will stay None — card still returns
-                pass
+    status, reason = "unavailable", "Канал видео неизвестен; сравнение с выборкой не рассчитано."
+    sample = None
+    sample_fetched_at = None
+    median = None
+    if video.duration_seconds is None:
+        status, reason = "duration_unknown", "Длительность видео неизвестна; оно не сравнивается с выборкой более 3 минут."
+    elif video.duration_seconds <= 180:
+        status, reason = "duration_too_short", "Видео длится не более 3 минут и не сравнивается с этой выборкой."
+    elif video.channel_id:
+        analysis = load_channel_analysis(db, video.channel_id, (lambda: adapter) if adapter is not None else factory, force_sync)
+        sample = analysis.sample
+        sample_fetched_at = analysis.fetched_at
+        median = analysis.metrics.median_views
+        # A selected video and its median are returned from the same coherent snapshot.
+        member = next((item for item in analysis.videos if item.id == video.id), None)
+        from_cache = from_cache and analysis.from_cache
+        if member is not None:
+            video = member.model_copy()
+            fetched_at = analysis.fetched_at
+            status = "included"
+            reason = None if median not in (None, 0) else "Медиана неизвестна или равна нулю; отношение к ней не определено."
         else:
-            cached_longs = cached_longs[:LONG_LIMIT_FOR_MEDIAN]
-
-        longs_for_median = [v for v in cached_longs if v.view_count is not None][:LONG_LIMIT_FOR_MEDIAN]
-        long_count = len(longs_for_median)
-        if long_count >= 3:
-            views = [v.view_count for v in longs_for_median]
-            channel_median = median_views(views)
-
-    return _to_card(av, channel_median, long_count)
+            status, reason = "not_in_sample", "Видео не входит в полученную выборку; отношение к её медиане не рассчитывается."
+    db.commit()
+    return VideoCardOut(
+        **video.model_dump(), channel_median_views=median,
+        channel_sample_count=sample.metric_count if sample is not None else None, sample=sample,
+        comparison_status=status, comparison_reason=reason, fetched_at=fetched_at,
+        sample_fetched_at=sample_fetched_at, from_cache=from_cache,
+        quota_used_estimate=(adapter.quota_used_estimate - initial_quota) if adapter is not None else (0 if sample is None else analysis.quota_used_estimate),
+    )

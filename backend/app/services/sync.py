@@ -1,47 +1,71 @@
-"""DB sync helpers — переиспользуются в search + video-card."""
-from datetime import datetime, timezone
+"""DB sync helpers — reused by search and confirmed channel sampling.
+
+Callers commit once per successful operation, never once per video.
+"""
+from dataclasses import asdict
+from datetime import datetime
+
 from sqlalchemy.orm import Session
+
 from ..models.channel import Channel, Video
+from ..schemas.common import as_utc, utc_now
 
-def upsert_channel(db: Session, ach) -> Channel:
-    ch = db.get(Channel, ach.id)
-    if ch is None:
-        ch = Channel(id=ach.id)
-        db.add(ch)
-    ch.title = ach.title
-    ch.description = ach.description or ""
-    ch.published_at = ach.published_at
-    ch.country = ach.country
-    ch.subscriber_count = ach.subscriber_count
-    ch.view_count = ach.view_count
-    ch.video_count = ach.video_count
-    ch.uploads_playlist_id = ach.uploads_playlist_id
-    ch.thumbnail_url = ach.thumbnail_url
-    ch.last_synced_at = datetime.now(timezone.utc)
-    db.commit()
-    db.refresh(ch)
-    return ch
 
-def upsert_video(db: Session, av):
-    v = db.get(Video, av.id)
-    if v is None:
-        v = Video(id=av.id, channel_id=av.channel_id or "unknown")
-        db.add(v)
-    cid = av.channel_id
-    if cid and db.get(Channel, cid) is None and av.channel_title:
-        stub = Channel(id=cid, title=av.channel_title or "", subscriber_count=av.channel_subscriber_count)
-        db.add(stub)
-    v.title = av.title
-    v.published_at = av.published_at
-    v.duration = av.duration
-    v.is_shorts = bool(av.is_shorts)
-    v.thumbnail_url = av.thumbnail_url
-    v.channel_title = av.channel_title
-    v.channel_subscriber_count = av.channel_subscriber_count
-    v.view_count = av.view_count
-    v.like_count = av.like_count
-    v.comment_count = av.comment_count
-    if av.channel_id:
-        v.channel_id = av.channel_id
-    db.commit()
-    return v
+def upsert_channel(db: Session, ach, fetched_at: datetime | None = None) -> Channel:
+    row = db.get(Channel, ach.id)
+    if row is None:
+        row = Channel(id=ach.id)
+        db.add(row)
+    for name in ("title", "description", "published_at", "country", "view_count", "video_count", "uploads_playlist_id", "thumbnail_url"):
+        value = getattr(ach, name)
+        if value is not None:
+            setattr(row, name, as_utc(value) if name == "published_at" else value)
+    if ach.subscriber_count_hidden is True:
+        row.subscriber_count = None
+    elif ach.subscriber_count is not None:
+        row.subscriber_count = ach.subscriber_count
+    if ach.subscriber_count_hidden is not None:
+        row.subscriber_count_hidden = ach.subscriber_count_hidden
+    row.last_synced_at = fetched_at or utc_now()
+    row.updated_at = row.last_synced_at
+    db.flush()
+    return row
+
+
+def upsert_video(db: Session, av, fetched_at: datetime | None = None) -> Video | None:
+    if not av.channel_id:
+        # An incomplete source row is returned to the caller, not given a fabricated channel FK.
+        return None
+    channel = db.get(Channel, av.channel_id)
+    if channel is None:
+        channel = Channel(id=av.channel_id, title=av.channel_title or "")
+        db.add(channel)
+    if av.channel_subscriber_count_hidden is True:
+        channel.subscriber_count = None
+    elif av.channel_subscriber_count is not None:
+        channel.subscriber_count = av.channel_subscriber_count
+    if av.channel_subscriber_count_hidden is not None:
+        channel.subscriber_count_hidden = av.channel_subscriber_count_hidden
+    db.flush()
+
+    row = db.get(Video, av.id)
+    if row is None:
+        row = Video(id=av.id, channel_id=av.channel_id)
+        db.add(row)
+    row.channel_id = av.channel_id
+    for name in ("title", "published_at", "duration", "duration_seconds", "thumbnail_url", "channel_title", "view_count", "like_count", "comment_count"):
+        value = getattr(av, name)
+        if value is not None:
+            setattr(row, name, as_utc(value) if name == "published_at" else value)
+    if av.channel_subscriber_count_hidden is True:
+        row.channel_subscriber_count = None
+    elif av.channel_subscriber_count is not None:
+        row.channel_subscriber_count = av.channel_subscriber_count
+    if av.channel_subscriber_count_hidden is not None:
+        row.channel_subscriber_count_hidden = av.channel_subscriber_count_hidden
+    row.fetched_at = fetched_at or utc_now()
+    payload = asdict(av)
+    payload["published_at"] = as_utc(av.published_at).isoformat() if av.published_at else None
+    row.source_payload = payload
+    db.flush()
+    return row

@@ -1,7 +1,8 @@
 from datetime import datetime, timezone
-from sqlalchemy import String, Integer, BigInteger, DateTime, ForeignKey, Float, Index
+from sqlalchemy import String, Integer, BigInteger, DateTime, ForeignKey, Boolean, JSON, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from ..database import Base
+
 
 class Channel(Base):
     __tablename__ = "channels"
@@ -13,6 +14,7 @@ class Channel(Base):
     country: Mapped[str | None] = mapped_column(String(8), nullable=True)
 
     subscriber_count: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    subscriber_count_hidden: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     view_count: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     video_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
@@ -34,15 +36,19 @@ class Video(Base):
     title: Mapped[str] = mapped_column(String(512), default="")
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     duration: Mapped[str | None] = mapped_column(String(32), nullable=True)  # ISO 8601 PT...
-    is_shorts: Mapped[bool] = mapped_column(default=False)
+    duration_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
     thumbnail_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     # denormalized for fast video-card without JOIN — updated on sync
     channel_title: Mapped[str | None] = mapped_column(String(512), nullable=True)
     channel_subscriber_count: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    channel_subscriber_count_hidden: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
 
     view_count: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     like_count: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     comment_count: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    fetched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Coherent source snapshot: an incomplete newer response does not relabel old counts as fresh.
+    source_payload: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     channel: Mapped["Channel"] = relationship(back_populates="videos")
 
@@ -66,3 +72,13 @@ class Snapshot(Base):
     __table_args__ = (
         Index("ix_snapshots_channel_date", "channel_id", "date"),
     )
+
+
+class ChannelAnalysis(Base):
+    """A confirmed uploads sample; search rows never stand in for this payload."""
+    __tablename__ = "channel_analyses"
+
+    channel_id: Mapped[str] = mapped_column(String(64), ForeignKey("channels.id", ondelete="CASCADE"), primary_key=True)
+    sample_key: Mapped[str] = mapped_column(String(128), primary_key=True)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    payload: Mapped[dict] = mapped_column(JSON)
