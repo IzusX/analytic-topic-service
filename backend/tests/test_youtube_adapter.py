@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+from urllib.parse import urlsplit
 
 import pytest
 
@@ -117,6 +118,26 @@ def test_adapter_contract_defaults_and_service_injection():
     assert adapter._service is service
     assert adapter.quota_used_estimate == 0
     assert service.calls == []
+
+
+@pytest.mark.parametrize("resource,parameters,path", [
+    ("channels", {"part": "snippet", "id": "channel"}, "/youtube/v3/channels"),
+    ("videos", {"part": "snippet", "id": "video"}, "/youtube/v3/videos"),
+    ("playlistItems", {"part": "contentDetails", "playlistId": "uploads"}, "/youtube/v3/playlistItems"),
+    ("search", {"part": "snippet", "type": "video", "order": "relevance"}, "/youtube/v3/search"),
+])
+def test_sdk_transport_uses_verified_bounded_shared_google_root(resource, parameters, path):
+    # Real SDK request construction remains offline under the network-blocking fixture.
+    adapter = YouTubeAdapter("fake-key")
+    http = adapter._service._http
+    assert http.timeout == 15
+    assert http.disable_ssl_certificate_validation is False
+    request = getattr(adapter._service, resource)().list(**parameters)
+    parsed = urlsplit(request.uri)
+    assert parsed.scheme == "https"
+    assert parsed.hostname == "www.googleapis.com"
+    assert parsed.path == path  # No duplicated youtube/v3 prefix.
+    assert adapter.quota_used_estimate == 0
 
 
 @pytest.mark.parametrize("duration,expected", [

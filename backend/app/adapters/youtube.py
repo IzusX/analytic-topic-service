@@ -60,7 +60,15 @@ class YouTubeAdapter(DataSourceAdapter):
         if not api_key:
             raise ValueError("YOUTUBE_API_KEY is empty — configure the service key on the server")
         from googleapiclient.discovery import build
-        self._service = build("youtube", "v3", developerKey=api_key, cache_discovery=False)
+        from googleapiclient.http import build_http
+        http = build_http()
+        http.timeout = 15
+        # Discovery already supplies youtube/v3 paths; use Google's shared API root.
+        self._service = build(
+            "youtube", "v3", developerKey=api_key, http=http,
+            client_options={"api_endpoint": "https://www.googleapis.com/"},
+            cache_discovery=False, static_discovery=True,
+        )
 
     # --- DataSourceAdapter impl ---
 
