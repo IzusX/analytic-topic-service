@@ -1,11 +1,29 @@
 import { defineStore } from 'pinia'
 import { computed, reactive, ref, shallowRef } from 'vue'
 import { ApiError, createConfiguredApiClient } from '../api'
-import type { ApiClient, SearchVideosRequest, SearchVideosResponse } from '../api'
+import type { ApiClient, SearchVideosRequest, SearchVideosResponse, VideoOut } from '../api'
+import { deduplicateVideos, sortOptions, sortVideos } from '../features/search/results'
+import type { SortMode } from '../features/search/results'
 import { createEmptyDraft, createRefreshRequest, criteriaKey, validateDraft } from '../features/search/model'
 import type { SearchDraft, SearchDraftField, SearchErrors } from '../features/search/model'
 
-type SearchAction = { kind: 'search' | 'refresh'; request: SearchVideosRequest }
+type SearchAction = { kind: 'search' | 'refresh' | 'more'; request: SearchVideosRequest }
+
+function isPageToken(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0 && value.length <= 2048 && !/[\x00-\x20\x7f]/.test(value)
+}
+
+/** Compare all backend criteria, including API-only bounds; only continuation is excluded. */
+function appliedKey(request: SearchVideosRequest): string {
+  return JSON.stringify({
+    query: request.query ?? '', limit: request.limit ?? 50, period: request.period ?? 'all',
+    relevance_language: request.relevance_language ?? null,
+    duration_ranges: [...(request.duration_ranges ?? [])].sort(),
+    published_after: request.published_after ?? null, published_before: request.published_before ?? null,
+    min_views: request.min_views ?? null, max_views: request.max_views ?? null,
+    min_subscribers: request.min_subscribers ?? null, max_subscribers: request.max_subscribers ?? null,
+  })
+}
 
 function copyRequest(request: SearchVideosRequest): SearchVideosRequest {
   const copy = { ...request }
@@ -22,14 +40,25 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function isSearchResponse(value: unknown): value is SearchVideosResponse {
+  if (!isRecord(value) || !isRecord(value.applied)) return false
+  const applied = value.applied
   return isRecord(value)
     && typeof value.query === 'string'
     && isRecord(value.applied)
     && (value.applied.query === undefined || typeof value.applied.query === 'string')
-    && (value.applied.duration_ranges === undefined || Array.isArray(value.applied.duration_ranges))
+    && (value.applied.duration_ranges === undefined || (Array.isArray(value.applied.duration_ranges)
+      && value.applied.duration_ranges.every(range => ['up_to_3m', '3_to_10m', '10_to_30m', '30_to_60m', 'over_60m'].includes(range))))
+    && (value.applied.period === undefined || ['all', 'day', 'week', 'month', 'year'].includes(value.applied.period as string))
+    && (value.applied.limit === undefined || (typeof value.applied.limit === 'number'
+      && Number.isInteger(value.applied.limit) && value.applied.limit >= 1 && value.applied.limit <= 50))
+    && ['published_after', 'published_before', 'relevance_language'].every(key => applied[key] == null || typeof applied[key] === 'string')
+    && ['min_views', 'max_views', 'min_subscribers', 'max_subscribers'].every(key => applied[key] == null
+      || (typeof applied[key] === 'number' && Number.isSafeInteger(applied[key]) && applied[key] >= 0))
+    && (value.applied.page_token == null || isPageToken(value.applied.page_token))
     && Array.isArray(value.videos)
     && value.videos.every(video => isRecord(video) && typeof video.id === 'string' && typeof video.title === 'string')
     && typeof value.fetched_at === 'string'
+    && (value.next_page_token == null || isPageToken(value.next_page_token))
     && [value.items_scanned, value.matched_count, value.quota_used_estimate]
       .every(count => typeof count === 'number' && Number.isSafeInteger(count) && count >= 0)
 }
@@ -64,6 +93,15 @@ export function createSearchStore(apiFactory: () => ApiClient = createConfigured
   return defineStore('search', () => {
     const draft = reactive<SearchDraft>(createEmptyDraft())
     const response = shallowRef<SearchVideosResponse | null>(null)
+    const sourceVideos = shallowRef<VideoOut[]>([])
+    const sortMode = ref<SortMode>('original')
+    const sortedVideos = computed(() => sortVideos(sourceVideos.value, sortMode.value))
+    const pageCount = ref(0)
+    const totalItemsScanned = ref(0)
+    const totalQuotaUsedEstimate = ref(0)
+    const lastAddedCount = ref<number | null>(null)
+    const paginationStopped = ref(false)
+    const consumedTokens = new Set<string>()
     const pending = shallowRef<SearchAction | null>(null)
     const error = shallowRef<ApiError | null>(null)
     const fieldErrors = ref<SearchErrors>({})
@@ -79,6 +117,13 @@ export function createSearchStore(apiFactory: () => ApiClient = createConfigured
     })
     // Server retryable metadata does not prohibit a later, explicit user retry.
     const canRetry = computed(() => !busy.value && failedAction.value !== null)
+    const canLoadMore = computed(() => !busy.value && !paginationStopped.value
+      && isPageToken(response.value?.next_page_token)
+      && !consumedTokens.has(response.value.next_page_token))
+
+    function setSort(mode: SortMode): void {
+      if (sortOptions.some(option => option.value === mode)) sortMode.value = mode
+    }
 
     function clearFieldError(field: SearchDraftField): void {
       delete fieldErrors.value[field]
@@ -115,10 +160,31 @@ export function createSearchStore(apiFactory: () => ApiClient = createConfigured
       try {
         const result = await apiFactory().searchVideos(copyRequest(snapshot.request), { signal: activeController.signal })
         if (id !== requestId || activeController.signal.aborted) return false
-        if (!isSearchResponse(result)) {
+        if (!isSearchResponse(result)
+          || (snapshot.kind === 'more' && (appliedKey(result.applied) !== appliedKey(snapshot.request)
+            || result.query !== (snapshot.request.query ?? '')))) {
           throw new ApiError('Сервис вернул некорректный ответ.', { code: 'invalid_response', retryable: true })
         }
-        response.value = result
+        if (snapshot.kind === 'more') {
+          const previousCount = sourceVideos.value.length
+          sourceVideos.value = deduplicateVideos([...sourceVideos.value, ...result.videos])
+          lastAddedCount.value = sourceVideos.value.length - previousCount
+          if (isPageToken(snapshot.request.page_token)) consumedTokens.add(snapshot.request.page_token)
+          paginationStopped.value = isPageToken(result.next_page_token) && consumedTokens.has(result.next_page_token)
+          response.value = { ...result, applied: response.value!.applied }
+          pageCount.value += 1
+          totalItemsScanned.value += result.items_scanned
+          totalQuotaUsedEstimate.value += result.quota_used_estimate
+        } else {
+          sourceVideos.value = deduplicateVideos(result.videos)
+          lastAddedCount.value = sourceVideos.value.length
+          consumedTokens.clear()
+          paginationStopped.value = false
+          response.value = result
+          pageCount.value = 1
+          totalItemsScanned.value = result.items_scanned
+          totalQuotaUsedEstimate.value = result.quota_used_estimate
+        }
         return true
       } catch (caught) {
         if (id !== requestId || activeController.signal.aborted || isAbortError(caught)) return false
@@ -155,6 +221,20 @@ export function createSearchStore(apiFactory: () => ApiClient = createConfigured
       return runAction({ kind: 'refresh', request: createRefreshRequest(response.value.applied) })
     }
 
+    async function loadMore(): Promise<boolean> {
+      if (!canLoadMore.value || response.value === null || !isPageToken(response.value.next_page_token)) return false
+      const request = copyRequest(response.value.applied)
+      request.page_token = response.value.next_page_token
+      if ((request.period ?? 'all') !== 'all' && !request.published_after) {
+        error.value = new ApiError('Для продолжения поиска отсутствует исходная граница периода. Обновите результаты.', {
+          code: 'invalid_response', retryable: false,
+        })
+        failedAction.value = null
+        return false
+      }
+      return runAction({ kind: 'more', request })
+    }
+
     async function retry(): Promise<boolean> {
       if (!canRetry.value || failedAction.value === null) return false
       return runAction(failedAction.value)
@@ -169,7 +249,9 @@ export function createSearchStore(apiFactory: () => ApiClient = createConfigured
 
     return {
       draft, response, pending, busy, error, fieldErrors, hasDraftChanges, canRetry,
-      patchDraft, resetFilters, clearFieldError, search, refresh, retry, cancel,
+      sourceVideos, sortedVideos, sortMode, canLoadMore, pageCount, totalItemsScanned,
+      totalQuotaUsedEstimate, lastAddedCount, paginationStopped,
+      patchDraft, resetFilters, clearFieldError, search, refresh, loadMore, setSort, retry, cancel,
     }
   })
 }

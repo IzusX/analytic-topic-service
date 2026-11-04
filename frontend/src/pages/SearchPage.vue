@@ -9,18 +9,25 @@ import SearchIcon from '../features/search/SearchIcon.vue'
 import { criteriaKey, validateDraft } from '../features/search/model'
 import { describeCriteria } from '../features/search/summary'
 import { formatUtcDate } from '../utils/presentation'
+import { sortOptions } from '../features/search/results'
+import type { SortMode } from '../features/search/results'
 
 const search = useSearchStore()
 const form = ref<{ focusFirstError: () => Promise<void> } | null>(null)
-const videos = computed(() => search.response?.videos ?? [])
+const videos = computed(() => search.sortedVideos)
+function changeSort(event: Event) {
+  search.setSort((event.target as HTMLSelectElement).value as SortMode)
+}
 const pendingDraftChanges = computed(() => {
-  if (!search.pending) return false
+  if (!search.pending || search.pending.kind === 'more') return false
   const draft = validateDraft(search.draft)
   return !draft.valid || criteriaKey(draft.request) !== criteriaKey(search.pending.request)
 })
-const loadingMessage = computed(() => search.pending?.kind === 'refresh'
-  ? 'Обновляем текущую выдачу. Ниже — ранее полученные данные.'
-  : search.response ? 'Ищем по новым условиям. Ниже — предыдущая выдача.' : 'Ищем видео…')
+const loadingMessage = computed(() => search.pending?.kind === 'more'
+  ? 'Загружаем следующую страницу. Ранее полученные видео остаются.'
+  : search.pending?.kind === 'refresh'
+    ? 'Обновляем текущую выдачу. Ниже — ранее полученные данные.'
+    : search.response ? 'Ищем по новым условиям. Ниже — предыдущая выдача.' : 'Ищем видео…')
 const errorTitle = computed(() => search.error?.code === 'quota_exceeded'
   ? 'Квота YouTube исчерпана'
   : search.error?.code === 'source_rate_limited' ? 'Источник ограничил запросы'
@@ -47,7 +54,7 @@ onBeforeRouteLeave(() => { search.cancel() })
   <section aria-labelledby="page-title">
     <h1 id="page-title" class="page-title" tabindex="-1">Поиск видео</h1>
     <SearchForm ref="form" :draft="search.draft" :errors="search.fieldErrors" :busy="search.busy" @change="search.patchDraft" @submit="runSearch" @reset="search.resetFilters" />
-    <p v-if="search.hasDraftChanges && !search.busy" class="draft-notice" role="status">Параметры изменены. Нажмите «Искать», чтобы применить. Ниже — текущая выдача.</p>
+    <p v-if="search.hasDraftChanges && (!search.busy || search.pending?.kind === 'more')" class="draft-notice" role="status">Параметры изменены. Нажмите «Искать», чтобы применить. Ниже — текущая выдача.</p>
     <p v-if="search.busy" class="request-status" role="status" aria-live="polite">{{ loadingMessage }}</p>
     <p v-if="pendingDraftChanges" class="helper">Изменения в форме не входят в выполняющийся запрос.</p>
 
@@ -60,11 +67,16 @@ onBeforeRouteLeave(() => { search.cancel() })
     </section>
 
     <section v-if="search.response" class="results" aria-label="Результаты поиска" :aria-busy="search.busy">
-      <h2 class="results-count">Загружено {{ videos.length }} видео</h2>
+      <div class="results-toolbar">
+        <h2 class="results-count">Загружено {{ videos.length }} видео</h2>
+        <label class="sort-control" for="search-sort">Сортировка загруженных видео
+          <select id="search-sort" :value="search.sortMode" @change="changeSort"><option v-for="option in sortOptions" :key="option.value" :value="option.value">{{ option.label }}</option></select>
+        </label>
+      </div>
       <div class="applied-conditions">
         <div class="applied-text">
           <p><strong>Текущая выдача:</strong> {{ describeCriteria(search.response.applied) }}</p>
-          <p class="helper">Получено {{ formatUtcDate(search.response.fetched_at, true) }}</p>
+          <p class="helper">Последняя страница получена {{ formatUtcDate(search.response.fetched_at, true) }}</p>
           <p v-if="search.response.applied.published_after" class="helper">Начало периода: {{ formatUtcDate(search.response.applied.published_after, true) }}</p>
         </div>
         <NButton attr-type="button" :disabled="search.busy" @click="search.refresh"><template #icon><SearchIcon name="refresh" /></template>Обновить выдачу</NButton>
@@ -79,10 +91,17 @@ onBeforeRouteLeave(() => { search.cancel() })
       </div>
       <section v-else class="empty-surface" aria-labelledby="empty-results-title">
         <h2 id="empty-results-title">В просмотренной части выдачи совпадений нет</h2>
-        <p>Из {{ search.response.items_scanned }} кандидатов ни одно видео не подошло по условиям. Можно изменить фильтры и нажать «Искать».</p>
+        <p>Из {{ search.totalItemsScanned }} проверенных кандидатов ни одно видео не подошло по условиям. Можно изменить фильтры и нажать «Искать».</p>
         <p v-if="search.response.next_page_token" class="helper">У источника есть продолжение: пустая обработанная страница не означает отсутствие совпадений на всём YouTube.</p>
       </section>
-      <p class="page-note">Обработана одна страница: {{ search.response.items_scanned }} кандидатов, {{ search.response.matched_count }} совпадений. Порядок YouTube по релевантности, не глобальные тренды.</p>
+      <p v-if="search.lastAddedCount !== null" class="page-note" role="status">{{ search.lastAddedCount === 0 ? 'На последней странице новых уникальных видео нет.' : `Добавлено уникальных видео: ${search.lastAddedCount}.` }}</p>
+      <div class="pagination-actions">
+        <NButton v-if="search.canLoadMore || search.pending?.kind === 'more'" class="load-more" attr-type="button" :disabled="search.busy" :loading="search.pending?.kind === 'more'" @click="search.loadMore">Показать ещё</NButton>
+        <p v-else-if="search.paginationStopped" class="page-note">Источник повторил токен продолжения. Догрузка остановлена, чтобы не запрашивать ту же страницу снова. Можно явно обновить выдачу.</p>
+        <p v-else-if="!search.response.next_page_token" class="page-note">Конец доступной выдачи по текущим условиям.</p>
+      </div>
+      <p class="page-note">Обработано страниц: {{ search.pageCount }}; кандидатов: {{ search.totalItemsScanned }}; уникальных видео: {{ search.sourceVideos.length }}. Одна догрузка — одна страница до 50 кандидатов.</p>
+      <p class="page-note">Сортировка применяется только к загруженным видео и не расходует API-квоту. Исходный порядок YouTube — по релевантности, не глобальные тренды.</p>
     </section>
     <div v-else-if="search.busy" class="video-grid first-load-skeleton" aria-hidden="true">
       <div v-for="index in 3" :key="index" class="skeleton-card"><div /><span /><span /><span /></div>
@@ -102,7 +121,11 @@ onBeforeRouteLeave(() => { search.cancel() })
 .request-error h2 { margin: 0 0 8px; font-size: 18px; color: #ffb4b8; }
 .request-error > p { margin: 6px 0 12px; }
 .results { margin-top: 28px; }
-.results-count { margin: 0 0 16px; font-size: 20px; font-weight: 600; }
+.results-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
+.results-count { margin: 0; font-size: 20px; font-weight: 600; }
+.sort-control { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; color: var(--app-muted); font-size: 13px; }
+.sort-control select { max-width: 100%; min-height: 44px; padding: 8px 12px; border: 1px solid var(--app-border); border-radius: var(--app-radius-control); background: var(--app-page); color: var(--app-text); font: inherit; }
+.pagination-actions { display: grid; justify-items: center; margin-top: 24px; }
 .applied-conditions { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; padding-bottom: 16px; border-bottom: 1px solid var(--app-divider); }
 .applied-text { flex: 1; min-width: 0; }
 .applied-text > p { margin: 0; overflow-wrap: anywhere; }
