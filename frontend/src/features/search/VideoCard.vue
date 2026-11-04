@@ -67,7 +67,7 @@ const duration = computed(() => formatDuration(props.video.duration_seconds))
           <div><dt>Просмотры / подписчики:</dt><dd>{{ ratio === null ? '—' : String(ratio).replace('.', ',') + '×' }}</dd></div>
         </dl>
       </details>
-      <RouterLink v-if="channelRoute" class="analysis-action" :to="channelRoute">Анализ канала</RouterLink>
+      <RouterLink v-if="channelRoute" :id="`analysis-${video.id}`" class="analysis-action" :to="channelRoute">Анализ канала</RouterLink>
       <p v-else class="analysis-unavailable">Канал для анализа неизвестен</p>
     </div>
   </article>

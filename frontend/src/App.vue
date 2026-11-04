@@ -4,16 +4,23 @@ import { RouterView, useRoute } from 'vue-router'
 import { NConfigProvider, NGlobalStyle, darkTheme, ruRU, dateRuRU } from 'naive-ui'
 import AppHeader from './components/AppHeader.vue'
 import { naiveTheme, themeVariables } from './styles/theme'
+import { useSearchStore } from './stores/search'
 
 const route = useRoute()
+const search = useSearchStore()
 
 watch(
   () => route.fullPath,
   async () => {
     const title = typeof route.meta.title === 'string' ? route.meta.title : 'Аналитика тем'
     document.title = `${title} · Аналитика тем`
+    const path = route.fullPath
     await nextTick()
-    document.getElementById('page-title')?.focus({ preventScroll: true })
+    if (route.fullPath !== path) return
+    const origin = route.name === 'search' && search.sourceVideoId
+      ? document.getElementById(`analysis-${search.sourceVideoId}`) : null
+    ;(origin ?? document.getElementById('page-title'))?.focus({ preventScroll: true })
+    if (route.name === 'search') window.scrollTo({ top: search.scrollY, behavior: 'instant' })
   },
   { immediate: true, flush: 'post' },
 )

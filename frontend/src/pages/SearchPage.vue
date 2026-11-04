@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { onBeforeRouteLeave } from 'vue-router'
 import { NButton } from 'naive-ui'
 import { useSearchStore } from '../stores/search'
@@ -40,19 +40,32 @@ async function focusFieldErrors() {
   }
 }
 async function runSearch() {
-  await search.search()
+  search.saveContext(window.scrollY)
+  const succeeded = await search.search()
   await focusFieldErrors()
+  if (succeeded) {
+    await nextTick()
+    window.scrollTo({ top: search.scrollY, behavior: 'instant' })
+  }
 }
 async function retrySearch() {
   await search.retry()
   await focusFieldErrors()
 }
-onBeforeRouteLeave(() => { search.cancel() })
+function saveContext() { search.saveContext(window.scrollY) }
+onMounted(() => { window.addEventListener('pagehide', saveContext) })
+onUnmounted(() => { window.removeEventListener('pagehide', saveContext) })
+onBeforeRouteLeave(to => {
+  const videoId = to.name === 'channel' && typeof to.query.videoId === 'string' ? to.query.videoId : null
+  search.saveContext(window.scrollY, videoId)
+  search.cancel()
+})
 </script>
 
 <template>
   <section aria-labelledby="page-title">
     <h1 id="page-title" class="page-title" tabindex="-1">Поиск видео</h1>
+    <p v-if="search.persistenceWarning" class="helper" role="status">{{ search.persistenceWarning }}</p>
     <SearchForm ref="form" :draft="search.draft" :errors="search.fieldErrors" :busy="search.busy" @change="search.patchDraft" @submit="runSearch" @reset="search.resetFilters" />
     <p v-if="search.hasDraftChanges && (!search.busy || search.pending?.kind === 'more')" class="draft-notice" role="status">Параметры изменены. Нажмите «Искать», чтобы применить. Ниже — текущая выдача.</p>
     <p v-if="search.busy" class="request-status" role="status" aria-live="polite">{{ loadingMessage }}</p>

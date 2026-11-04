@@ -1,5 +1,7 @@
 import { defineStore } from 'pinia'
-import { computed, reactive, ref, shallowRef } from 'vue'
+import { computed, reactive, ref, shallowRef, watch } from 'vue'
+import { searchCacheKey, useSessionCacheStore } from './sessionCache'
+import type { SearchSnapshot } from './sessionCache'
 import { ApiError, createConfiguredApiClient } from '../api'
 import type { ApiClient, SearchVideosRequest, SearchVideosResponse, VideoOut } from '../api'
 import { deduplicateVideos, sortOptions, sortVideos } from '../features/search/results'
@@ -89,9 +91,13 @@ function validationErrors(error: ApiError): SearchErrors {
   return errors
 }
 
-export function createSearchStore(apiFactory: () => ApiClient = createConfiguredApiClient) {
+export function createSearchStore(
+  apiFactory: () => ApiClient = createConfiguredApiClient,
+  cacheFactory?: () => ReturnType<typeof useSessionCacheStore>,
+) {
   return defineStore('search', () => {
-    const draft = reactive<SearchDraft>(createEmptyDraft())
+    const cache = cacheFactory?.()
+    const draft = reactive<SearchDraft>(cache?.draft ? { ...cache.draft, durationRanges: [...cache.draft.durationRanges] } : createEmptyDraft())
     const response = shallowRef<SearchVideosResponse | null>(null)
     const sourceVideos = shallowRef<VideoOut[]>([])
     const sortMode = ref<SortMode>('original')
@@ -108,6 +114,53 @@ export function createSearchStore(apiFactory: () => ApiClient = createConfigured
     const failedAction = shallowRef<SearchAction | null>(null)
     let controller: AbortController | null = null
     let requestId = 0
+    let activeKey: string | null = cache?.activeSearchKey ?? null
+    const scrollY = ref(0)
+    const sourceVideoId = ref<string | null>(null)
+    const persistenceWarning = computed(() => cache?.persistenceWarning ?? null)
+
+    function restore(snapshot: SearchSnapshot): void {
+      response.value = snapshot.response
+      sourceVideos.value = snapshot.sourceVideos
+      sortMode.value = snapshot.sortMode
+      pageCount.value = snapshot.pageCount
+      totalItemsScanned.value = snapshot.totalItemsScanned
+      totalQuotaUsedEstimate.value = snapshot.totalQuotaUsedEstimate
+      lastAddedCount.value = snapshot.lastAddedCount
+      paginationStopped.value = snapshot.paginationStopped
+      consumedTokens.clear()
+      for (const token of snapshot.consumedTokens) consumedTokens.add(token)
+      scrollY.value = snapshot.scrollY
+      sourceVideoId.value = snapshot.sourceVideoId
+      error.value = null
+      failedAction.value = null
+      fieldErrors.value = {}
+    }
+
+    function persist(): void {
+      if (!cache || !activeKey || !response.value) return
+      cache.putSearch(activeKey, {
+        response: response.value, sourceVideos: sourceVideos.value, sortMode: sortMode.value,
+        pageCount: pageCount.value, totalItemsScanned: totalItemsScanned.value,
+        totalQuotaUsedEstimate: totalQuotaUsedEstimate.value, lastAddedCount: lastAddedCount.value,
+        paginationStopped: paginationStopped.value, consumedTokens: [...consumedTokens],
+        scrollY: scrollY.value, sourceVideoId: sourceVideoId.value,
+      })
+    }
+
+    function saveContext(position: number, videoId: string | null = sourceVideoId.value): void {
+      scrollY.value = Number.isFinite(position) ? Math.max(0, position) : 0
+      sourceVideoId.value = videoId
+      persist()
+      cache?.setDraft(draft)
+    }
+
+    if (cache && activeKey) {
+      const saved = cache.getSearch(activeKey)
+      if (saved) restore(saved)
+      else activeKey = null
+    }
+    if (cache) watch(draft, () => cache.setDraft(draft), { deep: true, flush: 'sync' })
 
     const busy = computed(() => pending.value !== null)
     const hasDraftChanges = computed(() => {
@@ -122,7 +175,10 @@ export function createSearchStore(apiFactory: () => ApiClient = createConfigured
       && !consumedTokens.has(response.value.next_page_token))
 
     function setSort(mode: SortMode): void {
-      if (sortOptions.some(option => option.value === mode)) sortMode.value = mode
+      if (sortOptions.some(option => option.value === mode)) {
+        sortMode.value = mode
+        persist()
+      }
     }
 
     function clearFieldError(field: SearchDraftField): void {
@@ -184,7 +240,11 @@ export function createSearchStore(apiFactory: () => ApiClient = createConfigured
           pageCount.value = 1
           totalItemsScanned.value = result.items_scanned
           totalQuotaUsedEstimate.value = result.quota_used_estimate
+          activeKey = searchCacheKey(snapshot.request)
+          scrollY.value = 0
+          sourceVideoId.value = null
         }
+        persist()
         return true
       } catch (caught) {
         if (id !== requestId || activeController.signal.aborted || isAbortError(caught)) return false
@@ -213,6 +273,14 @@ export function createSearchStore(apiFactory: () => ApiClient = createConfigured
       const result = validateDraft(draft)
       fieldErrors.value = result.errors
       if (!result.valid) return false
+      const key = searchCacheKey(result.request)
+      const saved = cache?.getSearch(key)
+      if (saved) {
+        activeKey = key
+        restore(saved)
+        persist()
+        return true
+      }
       return runAction({ kind: 'search', request: result.request })
     }
 
@@ -250,11 +318,11 @@ export function createSearchStore(apiFactory: () => ApiClient = createConfigured
     return {
       draft, response, pending, busy, error, fieldErrors, hasDraftChanges, canRetry,
       sourceVideos, sortedVideos, sortMode, canLoadMore, pageCount, totalItemsScanned,
-      totalQuotaUsedEstimate, lastAddedCount, paginationStopped,
-      patchDraft, resetFilters, clearFieldError, search, refresh, loadMore, setSort, retry, cancel,
+      totalQuotaUsedEstimate, lastAddedCount, paginationStopped, scrollY, sourceVideoId, persistenceWarning,
+      patchDraft, resetFilters, clearFieldError, search, refresh, loadMore, setSort, retry, cancel, saveContext,
     }
   })
 }
 
-export const useSearchStore = createSearchStore()
+export const useSearchStore = createSearchStore(createConfiguredApiClient, useSessionCacheStore)
 export default useSearchStore

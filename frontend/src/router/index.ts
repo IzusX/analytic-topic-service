@@ -34,7 +34,7 @@ export function createAppRouter(history: RouterHistory = createWebHistory(import
   return createRouter({
     history,
     routes,
-    // Context-aware restoration is implemented with the search store in a later stage.
-    scrollBehavior: () => ({ top: 0 }),
+    // Search restores its persisted position after rendering in App.vue.
+    scrollBehavior: to => to.name === 'search' ? false : { top: 0 },
   })
 }
