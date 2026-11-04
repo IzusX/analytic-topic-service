@@ -4,21 +4,21 @@
 
 Сервис считает медиану, среднее, разброс просмотров и числовые отношения. Не выдаёт оценочные вердикты успешности, не обещает рост и не представляет накопленные просмотры как текущую динамику.
 
-Сейчас реализован backend. Интерфейс Vue, его сессионный кеш и интеграция ещё в плане.
+Реализован backend и технический каркас frontend: общая оболочка, маршруты, тема и типизированный API-клиент. Форма/выдача поиска, сессионный кеш и экран аналитики ещё не подключены. Браузерная проверка каркаса остаётся открытой.
 
 ## Стек и устройство
 
 - Backend: FastAPI, SQLAlchemy, SQLite; дальнейший переход на PostgreSQL предусмотрен моделями, но подключение не проверено.
 - Источник: YouTube Data API v3, только публичные данные.
-- Планируемый frontend: Vue 3, TypeScript, Vite, Vue Router, Pinia, Tailwind, Naive UI, ECharts.
+- Frontend: Vue 3, TypeScript, Vite, Vue Router, Pinia, Tailwind, Naive UI; ECharts установлен для будущего графика.
 
 ```text
-frontend (Vue, planned) --REST--> backend (FastAPI)
-                               -- DataSourceAdapter -> YouTubeAdapter
-                               -- SQLite: channels / videos / snapshots / channel_analyses
+frontend (Vue foundation) --typed REST client--> backend (FastAPI)
+                                              -- DataSourceAdapter -> YouTubeAdapter
+                                              -- SQLite: channels / videos / snapshots / channel_analyses
 ```
 
-`DataSourceAdapter` отделяет источник от вычислений. Поисковые записи не подменяют подтверждённую выборку загрузок канала.
+`DataSourceAdapter` отделяет источник от вычислений. Поисковые записи не подменяют подтверждённую выборку загрузок канала. API-клиент frontend пока не подключён к пользовательским страницам.
 
 ## Структура
 
@@ -28,6 +28,11 @@ backend/
   tests/        тесты без живых запросов к YouTube
   contracts/    сгенерированные OpenAPI и TypeScript-типы
   API_CONTRACT.md
+frontend/
+  src/          общая оболочка, маршруты, страницы-заготовки и тема
+  src/api/      HTTP-клиент, ошибки и type-only backend DTO
+  scripts/      отдельный браузерный стенд
+  README.md
 ```
 
 ## Локальный запуск
@@ -72,6 +77,20 @@ python -m app.migrate --backup ../backups/before-v2.sqlite3
 
 PostgreSQL-ветка миграции требует заранее созданной внешней резервной копии и `--backup-confirmed`; реальное подключение и PostgreSQL-драйвер в этой проверке не настраивались.
 
+### Frontend — техническая основа
+
+Проверено на Node 24.19.0. В отдельном терминале из корня checkout:
+
+```bash
+cd frontend
+npm ci --cache ../.npm-cache --no-audit --no-fund
+npm run dev
+```
+
+Адрес: `http://127.0.0.1:5173/`. Страницы пока являются заготовками и не выполняют поиск/анализ. Это отдельный frontend проекта, не DeepSeek Harness GUI.
+
+В dev запросы `/api` проксируются в backend на 8000. Для production нужен публичный API origin в `VITE_API_BASE_URL`; YouTube-ключ в frontend не переносится. Полная конфигурация, API-фабрики и ограничения: [frontend/README.md](frontend/README.md).
+
 ## Основные API
 
 | Эндпоинт | Назначение |
@@ -101,9 +120,15 @@ python -m app.export_contracts
 
 Тесты блокируют внешний сетевой доступ и используют подставной источник. Покрываются точные границы, календарные периоды, пагинация, порядок и стоимость пакетных операций, неполные данные, кеш, безопасные ошибки, миграция/откат и сохранность резервной копии SQLite.
 
-`contracts/openapi.json` и `contracts/api.ts` генерируются из одной схемы; тесты обнаруживают рассинхронизацию. Компиляция TypeScript будет проверена при подготовке frontend.
+`contracts/openapi.json` и `contracts/api.ts` генерируются из одной схемы; тесты обнаруживают рассинхронизацию. Frontend импортирует DTO только как типы; компиляция контракта проверена вместе с `vue-tsc`/`tsc`. Это не полная runtime-валидация JSON и не проверка рендера.
 
 Ограниченная проверка поиска, аналитики и кеша на живых данных: [отчёт](backend/LIVE_TEST_REPORT.md). Это не нагрузочный тест и не оценка всей выдачи. Фактический баланс квоты YouTube и PostgreSQL не проверены. Синтаксическая проверка не подменяет тесты и запуск API.
+
+### Проверки frontend
+
+Из `frontend/`: `npm run typecheck`, `npm test`, `npm run build`. Последний полный прогон — **131 passed**; TypeScript-контракт также скомпилирован. Все API-вызовы в тестах подставные, без YouTube-квоты.
+
+Браузерный стенд подготовлен, но Chrome заблокирован текущим sandbox. Пользователь разрешил зафиксировать технический каркас, оставив визуальную проверку открытой. Не подтверждены реальный рендер, адаптивность и финальный внешний вид. Подробный результат: [frontend/STAGE_5.md](frontend/STAGE_5.md).
 
 ## Развёртывание
 

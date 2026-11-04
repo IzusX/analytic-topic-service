@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-04T02:50:17.848Z",
+  "title": "Design System: Аналитика тем",
+  "extensions": {
+    "colorMeta": {
+      "primary": { "role": "primary", "displayName": "Фиолетовый управления" },
+      "page": { "role": "neutral", "displayName": "Графитовый фон" },
+      "surface": { "role": "neutral", "displayName": "Рабочая поверхность" },
+      "analytical-blue": { "role": "secondary", "displayName": "Независимый аналитический голубой" }
+    },
+    "shadows": [],
+    "motion": [],
+    "breakpoints": [{ "name": "sm", "value": "640px" }]
+  },
+  "components": [
+    {
+      "name": "Основная навигация",
+      "kind": "nav",
+      "refersTo": "navigation",
+      "description": "Единственный пункт поиска и активное состояние из каркаса.",
+      "html": "<nav class=\"ds-nav\" aria-label=\"Основная навигация\"><a class=\"ds-brand\" href=\"#\">Аналитика тем</a><a class=\"ds-current\" href=\"#\" aria-current=\"page\">Поиск видео</a></nav>",
+      "css": ".ds-nav{display:flex;flex-wrap:wrap;align-items:center;gap:32px;min-height:64px;background:#17181c;font-family:system-ui,-apple-system,Segoe UI,sans-serif;font-size:16px;border-bottom:1px solid #34363e}.ds-nav a{display:inline-flex;align-items:center;min-height:44px;text-underline-offset:4px}.ds-brand{color:#f1f2f5;font-weight:650;text-decoration:none}.ds-current{color:#b5a0ff;text-decoration-thickness:2px}.ds-nav a:hover{color:#c6b6ff}.ds-nav a:focus-visible{outline:2px solid #d5c9ff;outline-offset:4px}"
+    },
+    {
+      "name": "Явная заготовка страницы",
+      "kind": "card",
+      "refersTo": "empty-surface",
+      "description": "Не содержит вымышленных результатов или обещания готового поиска.",
+      "html": "<section class=\"ds-empty\"><h2>Поиск ещё не подключён</h2><p>Здесь появятся запрос, фильтры и найденные видео.</p></section>",
+      "css": ".ds-empty{background:#202126;color:#f1f2f5;border:1px solid #34363e;border-radius:12px;padding:28px 24px;font-family:system-ui,-apple-system,Segoe UI,sans-serif}.ds-empty h2{margin:0 0 12px;font-size:20px;line-height:1.35;font-weight:600}.ds-empty p{margin:0;color:#b5b8c4;font-size:16px;line-height:1.5}"
+    }
+  ],
+  "narrative": {
+    "overview": "Запись значений из текущего кода этапа 5, а не новый визуальный концепт. Техническая фиксация каркаса принята пользователем с открытой браузерной проверкой.",
+    "keyCharacteristics": ["Графитовая основа", "Фиолетовый управления", "Независимые аналитические роли", "Открытая браузерная проверка"],
+    "rules": [],
+    "dos": ["Сохранять семантические роли и общий источник цветов для CSS/Naive UI.", "Сохранять подписи действий, видимый фокус и reduced-motion режим."],
+    "donts": ["Не превращать цвет данных в красно-зелёную оценку успешности.", "Не добавлять настройки, каталог каналов или обязательную страницу видео ради заполнения каркаса.", "Не выдавать source-only токены, тесты или отсутствие screenshot за визуальное согласование."]
+  }
+}
