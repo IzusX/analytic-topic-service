@@ -71,6 +71,16 @@ export const naiveTheme: GlobalThemeOverrides = {
     primaryColorPressed: palette.accentPressed,
     primaryColorSuppl: palette.accentPressed,
   },
+  Input: {
+    heightMedium: '44px',
+    fontSizeMedium: '16px',
+    borderRadius: '8px',
+  },
+  InternalSelection: {
+    heightMedium: '44px',
+    fontSizeMedium: '16px',
+    borderRadius: '8px',
+  },
   Button: {
     heightMedium: '44px',
     borderRadiusMedium: '8px',

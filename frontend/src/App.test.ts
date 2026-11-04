@@ -40,7 +40,7 @@ describe('frontend foundation', () => {
   it('opens the search shell without automatically calling the API', async () => {
     const { wrapper } = await openPage('/')
     expect(wrapper.get('h1').text()).toBe('Поиск видео')
-    expect(wrapper.text()).toContain('Поиск ещё не подключён')
+    expect(wrapper.text()).toContain('Задайте условия и начните поиск')
     expect(wrapper.get('nav').attributes('aria-label')).toBe('Основная навигация')
     expect(wrapper.get('.nav-link').attributes('aria-current')).toBe('page')
     expect(document.title).toBe('Поиск видео · Аналитика тем')
