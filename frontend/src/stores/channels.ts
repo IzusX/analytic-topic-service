@@ -4,7 +4,7 @@ import { ApiError, createConfiguredApiClient } from '../api'
 import type { ApiClient, ChannelCardOut } from '../api'
 import { channelCacheKey, isChannelSnapshot, useSessionCacheStore } from './sessionCache'
 
-export interface ChannelLoadOptions { forceSync?: boolean; signal?: AbortSignal }
+export interface ChannelLoadOptions { forceSync?: boolean; sourceVideoId?: string; signal?: AbortSignal }
 
 /** Explicit actions only: creating this store never fetches a channel. */
 export function createChannelsStore(
@@ -35,10 +35,11 @@ export function createChannelsStore(
       if (inFlight?.key === key) return inFlight.promise
       cancel()
       const generation = requestId
+      const current = channelId.value === id ? response.value : null
       channelId.value = id
       error.value = null
       const previous = cache.getChannel(key)
-      response.value = previous
+      response.value = options.forceSync && current ? current : previous
       if (options.signal?.aborted) return Promise.resolve(false)
       if (previous && !options.forceSync) return Promise.resolve(true)
       const activeController = new AbortController()
@@ -49,14 +50,16 @@ export function createChannelsStore(
       const promise = (async () => {
         try {
           const result = await apiFactory().getChannel(id, {
-            ...(options.forceSync === undefined ? {} : { forceSync: options.forceSync }), signal: activeController.signal,
+            ...(options.forceSync === undefined ? {} : { forceSync: options.forceSync }),
+            ...(options.sourceVideoId === undefined ? {} : { sourceVideoId: options.sourceVideoId }), signal: activeController.signal,
           })
           if (generation !== requestId || activeController.signal.aborted) return false
           if (!isChannelSnapshot(result) || result.channel.id !== id) {
             throw new ApiError('Сервис вернул некорректный ответ.', { code: 'invalid_response', retryable: true })
           }
           cache.putChannel(key, result)
-          response.value = cache.getChannel(key)
+          // Source context is transient; the shared cached analysis excludes it.
+          response.value = result
           return true
         } catch (caught) {
           if (generation !== requestId || activeController.signal.aborted

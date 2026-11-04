@@ -15,6 +15,7 @@ import { createEmptyDraft } from '../features/search/model'
 import { createAppRouter } from '../router'
 import { createSearchStore, useSearchStore } from '../stores/search'
 import SearchPage from './SearchPage.vue'
+import { channelCacheKey, createSessionCacheStore } from '../stores/sessionCache'
 
 const fetchedAt = '2026-02-01T12:00:00Z'
 const video: VideoOut = {
@@ -77,7 +78,14 @@ async function openSearch() {
   const api: ApiClient = { searchVideos, getChannel, getVideo }
   const factory = vi.fn(() => api)
   const pinia = createPinia()
-  const store = createSearchStore(factory)(pinia)
+  const cache = createSessionCacheStore()(pinia)
+  cache.putChannel(channelCacheKey('UC_stage6'), {
+    channel: { id: 'UC_stage6', title: 'Анализ канала' },
+    sample: { selected_count: 0, metric_count: 0, uploads_scanned: 0, pages_scanned: 0,
+      stop_reason: 'uploads_exhausted', target_reached: false, scan_limit_reached: false },
+    metrics: { count: 0 }, summary: '', videos: [], fetched_at: fetchedAt,
+  })
+  const store = createSearchStore(factory, () => cache)(pinia)
   const router = createAppRouter(createMemoryHistory())
   await router.push('/')
   await router.isReady()
@@ -756,7 +764,8 @@ describe('real router leave and stale-completion protection', () => {
     expect(router.currentRoute.value.params.channelId).toBe('UC_stage6')
     expect(router.currentRoute.value.query.videoId).toBe('video_stage6')
     expect(wrapper.get('h1').text()).toBe('Анализ канала')
-    expect(wrapper.get('.route-context').text()).toContain('video_stage6')
+    expect(wrapper.text()).toContain('Исходное видео: video_stage6')
+    expect(wrapper.text()).toContain('Подходящих видео в просмотренной части нет')
     expect(oldSignal?.aborted).toBe(true)
     expect(store.pending).toBeNull()
     expect(store.busy).toBe(false)

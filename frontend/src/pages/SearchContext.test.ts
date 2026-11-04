@@ -7,7 +7,7 @@ import { createMemoryHistory } from 'vue-router'
 import App from '../App.vue'
 import { createAppRouter } from '../router'
 import { createSearchStore } from '../stores/search'
-import { createSessionCacheStore } from '../stores/sessionCache'
+import { channelCacheKey, createSessionCacheStore } from '../stores/sessionCache'
 import type { ApiClient } from '../api'
 
 let wrapper: VueWrapper | undefined
@@ -19,6 +19,12 @@ async function setup() {
   const disk: Storage = { get length() { return data.size }, clear: () => data.clear(), key: i => [...data.keys()][i] ?? null,
     getItem: key => data.get(key) ?? null, setItem: (key, value) => { data.set(key, value) }, removeItem: key => { data.delete(key) } }
   const cache = createSessionCacheStore(() => disk)(pinia)
+  cache.putChannel(channelCacheKey('UC_example'), {
+    channel: { id: 'UC_example', title: 'Пример канала' },
+    sample: { selected_count: 0, metric_count: 0, uploads_scanned: 0, pages_scanned: 0,
+      stop_reason: 'uploads_exhausted', target_reached: false, scan_limit_reached: false },
+    metrics: { count: 0 }, summary: '', videos: [], fetched_at: '2026-02-01T00:00:00Z',
+  })
   const searchVideos = vi.fn<ApiClient['searchVideos']>().mockResolvedValue({
     query: 'Topic', applied: { query: 'Topic' }, videos: [{ id: 'origin', title: 'Example', channel_id: 'UC_example' }],
     fetched_at: '2026-02-01T00:00:00Z', items_scanned: 1, matched_count: 1, quota_used_estimate: 102, next_page_token: null,

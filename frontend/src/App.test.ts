@@ -7,6 +7,7 @@ import { createMemoryHistory } from 'vue-router'
 import App from './App.vue'
 import { createAppRouter, routes } from './router'
 import { navigation } from './router/navigation'
+import { channelCacheKey, createSessionCacheStore } from './stores/sessionCache'
 
 const mounted: VueWrapper[] = []
 const fetchSpy = vi.fn()
@@ -26,9 +27,18 @@ async function openPage(path: string) {
   const router = createAppRouter(createMemoryHistory())
   await router.push(path)
   await router.isReady()
+  const pinia = createPinia()
+  // These routing/focus tests use a cached analysis; transport is covered by ChannelPage tests.
+  const cache = createSessionCacheStore()(pinia)
+  cache.putChannel(channelCacheKey('UC_sample'), {
+    channel: { id: 'UC_sample', title: 'Анализ канала' },
+    sample: { selected_count: 0, metric_count: 0, uploads_scanned: 0, pages_scanned: 0,
+      stop_reason: 'uploads_exhausted', target_reached: false, scan_limit_reached: false },
+    metrics: { count: 0 }, summary: '', videos: [], fetched_at: '2026-02-01T00:00:00Z',
+  })
   const wrapper = mount(App, {
     attachTo: document.body,
-    global: { plugins: [createPinia(), router] },
+    global: { plugins: [pinia, router] },
   })
   mounted.push(wrapper)
   await flushPromises()
@@ -62,7 +72,7 @@ describe('frontend foundation', () => {
     expect(wrapper.get('h1').text()).toBe('Анализ канала')
     expect(wrapper.text()).toContain('UC_sample')
     expect(wrapper.text()).toContain('video_sample')
-    expect(wrapper.text()).toContain('Анализ ещё не подключён')
+    expect(wrapper.text()).toContain('Подходящих видео в просмотренной части нет')
     expect(wrapper.get('.nav-link').attributes('aria-current')).toBeUndefined()
     expect(document.title).toBe('Анализ канала · Аналитика тем')
     expect(fetchSpy).not.toHaveBeenCalled()
