@@ -126,7 +126,7 @@ python -m app.export_contracts
 
 ### Проверки frontend
 
-Из `frontend/`: `npm run typecheck`, `npm test`, `npm run build`. Последний полный прогон этапа 10 — **413 passed**; TypeScript-контракт также скомпилирован. Все API-вызовы в тестах подставные, без YouTube-квоты.
+Из `frontend/`: `npm run typecheck`, `npm test`, `npm run build`. Последний полный прогон этапа 11 — **413 passed**; TypeScript-контракт также скомпилирован. Все API-вызовы в тестах подставные, без YouTube-квоты.
 
 Браузерный стенд этапа 10 прошёл в настоящем Chrome после одобренного расширенного доступа: fixture-поиск/канал/возврат, клавиатура, эмуляция touch и ширины 1440/390/320 px; YouTube не вызывался. 12 PNG и JSON-отчёт сохраняются локально в frontend/verification. Это не screen-reader/WCAG-сертификация или проверка физических устройств. Финальный внешний вид ещё не утверждён. Подробности: [frontend/STAGE_10.md](frontend/STAGE_10.md). Каркас описан в [frontend/STAGE_5.md](frontend/STAGE_5.md); рабочий поиск и три живых API-проверки — в [frontend/STAGE_6.md](frontend/STAGE_6.md).
 

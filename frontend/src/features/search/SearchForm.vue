@@ -114,13 +114,13 @@ defineExpose({ focusFirstError })
 </template>
 
 <style scoped>
-.search-form { margin-top: 24px; padding: 20px; border: 1px solid var(--app-divider); border-radius: var(--app-radius-surface); background: var(--app-surface); }
+.search-form { margin-top: 16px; padding: 16px; border: 1px solid var(--app-divider); border-radius: var(--app-radius-surface); background: var(--app-surface); }
 .query-row { display: flex; align-items: flex-end; gap: 12px; }
 .query-field { flex: 1; min-width: 0; }
 .query-field > label { display: block; margin-bottom: 8px; }
 .optional { color: var(--app-muted); font-size: 14px; }
-.form-hint { margin: 8px 0 0; color: var(--app-muted); font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
-.filters-grid { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1.1fr) minmax(0,1fr) minmax(0,1.15fr); gap: 20px; margin-top: 24px; }
+.form-hint { margin: 8px 0 0; color: var(--app-muted); font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; }
+.filters-grid { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1.1fr) minmax(0,1fr) minmax(0,1.15fr); align-items: start; gap: 16px; margin-top: 16px; }
 .filter-field { min-width: 0; }
 .filter-field > label, .filter-field > span, legend { display: block; margin-bottom: 8px; font-size: 14px; }
 .subscriber-field { margin: 0; padding: 0; border: 0; }
@@ -129,12 +129,16 @@ defineExpose({ focusFirstError })
 .duration-disclosure > summary { display: list-item; }
 .duration-options { margin-top: 8px; padding: 8px 12px 12px; border: 1px solid var(--app-divider); border-radius: var(--app-radius-control); background: var(--app-page); }
 .duration-options label { display: flex; min-height: 44px; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; }
-.duration-options input { width: 18px; height: 18px; accent-color: var(--app-accent); }
-.filter-footer { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; margin-top: 12px; }
+.duration-options input { flex-shrink: 0; width: 18px; height: 18px; accent-color: var(--app-accent); }
+.filter-footer { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-top: 8px; }
 .filter-footer .form-hint { flex: 1; min-width: 0; margin: 0; }
 .filter-footer > .n-button { min-height: 44px; }
 .field-error { margin: 6px 0 0; color: #ffb4b8; font-size: 13px; }
 .filters-trigger, .mobile-search { display: none; }
+@media (min-width: 640px) {
+  .duration-options { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); column-gap: 8px; }
+  .duration-options .form-hint { grid-column: 1 / -1; }
+}
 @media (max-width: 1099px) { .filters-grid { grid-template-columns: repeat(2,minmax(0,1fr)); } }
 @media (max-width: 639px) {
   .search-form { padding: 16px; }

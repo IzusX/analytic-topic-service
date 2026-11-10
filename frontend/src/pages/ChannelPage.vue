@@ -47,12 +47,12 @@ function medianRatio(video: VideoOut) {
 
 <template>
   <section aria-labelledby="page-title" :aria-busy="channels.pending">
-    <RouterLink class="text-action back-link" :to="{ name: 'search' }">{{ search.response ? 'К результатам поиска' : 'К поиску' }}</RouterLink>
+    <RouterLink class="text-action back-link" :to="{ name: 'search' }"><SearchIcon name="back" />{{ search.response ? 'К результатам поиска' : 'К поиску' }}</RouterLink>
     <div class="channel-heading">
       <div class="channel-identity">
         <img v-if="avatar && !avatarFailed" :src="avatar" alt="" width="64" height="64" class="channel-avatar" @error="avatarFailed = true" />
         <div><h1 id="page-title" class="page-title" tabindex="-1">{{ analysis?.channel.title || 'Анализ канала' }}</h1>
-          <a class="text-action" :href="channelUrl" target="_blank" rel="noopener noreferrer" aria-label="Канал на YouTube, новая вкладка">Канал на YouTube</a>
+          <a class="text-action" :href="channelUrl" target="_blank" rel="noopener noreferrer" aria-label="Канал на YouTube, новая вкладка">Канал на YouTube<SearchIcon name="external" /></a>
         </div>
       </div>
       <NButton v-if="analysis" attr-type="button" :disabled="channels.pending" :loading="channels.pending" @click="load(true)"><template #icon><SearchIcon name="refresh" /></template>Обновить данные</NButton>
@@ -127,7 +127,9 @@ function medianRatio(video: VideoOut) {
 </template>
 
 <style scoped>
-.back-link { margin-bottom: 20px; }
+.text-action { gap: 8px; }
+.back-link { margin-bottom: 16px; }
+.channel-heading .page-title { color: var(--app-text); }
 .channel-heading, .channel-identity { display: flex; align-items: center; gap: 16px; min-width: 0; }
 .channel-heading { justify-content: space-between; flex-wrap: wrap; }
 .channel-identity { flex: 1; }

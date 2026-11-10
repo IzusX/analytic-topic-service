@@ -125,8 +125,8 @@ a {
   text-decoration: underline;
 }
 
-.text-action:hover {
-  color: var(--app-accent-hover);
+@media (hover: hover) {
+  .text-action:hover { color: var(--app-accent-hover); }
 }
 
 @media (max-width: 639px) {

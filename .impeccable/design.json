@@ -1,41 +1,89 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-11-04T02:50:17.848Z",
+  "generatedAt": "2026-11-10T12:57:41.399Z",
   "title": "Design System: Аналитика тем",
   "extensions": {
     "colorMeta": {
       "primary": { "role": "primary", "displayName": "Фиолетовый управления" },
       "page": { "role": "neutral", "displayName": "Графитовый фон" },
       "surface": { "role": "neutral", "displayName": "Рабочая поверхность" },
-      "analytical-blue": { "role": "secondary", "displayName": "Независимый аналитический голубой" }
+      "header": { "role": "neutral", "displayName": "Фиолетово-графитовый хедер" },
+      "header-border": { "role": "neutral", "displayName": "Граница хедера" },
+      "header-active": { "role": "neutral", "displayName": "Активная навигация" },
+      "analytical-blue": { "role": "secondary", "displayName": "Независимый аналитический голубой" },
+      "median": { "role": "secondary", "displayName": "Золотая медиана" }
     },
     "shadows": [],
-    "motion": [],
-    "breakpoints": [{ "name": "sm", "value": "640px" }]
+    "motion": [{ "name": "analysis-action-color", "value": "background-color 150ms ease-out, color 150ms ease-out", "purpose": "Цветовой переход ссылки анализа только при prefers-reduced-motion: no-preference; hover-стили только при hover: hover." }],
+    "breakpoints": [
+      { "name": "metrics-single", "value": "359px" },
+      { "name": "channel-stack", "value": "540px" },
+      { "name": "sm", "value": "640px" },
+      { "name": "metrics-pair", "value": "800px" },
+      { "name": "search-pair-max", "value": "1099px" },
+      { "name": "search-four", "value": "1560px" }
+    ]
   },
   "components": [
     {
       "name": "Основная навигация",
       "kind": "nav",
       "refersTo": "navigation",
-      "description": "Единственный пункт поиска и активное состояние из каркаса.",
-      "html": "<nav class=\"ds-nav\" aria-label=\"Основная навигация\"><a class=\"ds-brand\" href=\"#\">Аналитика тем</a><a class=\"ds-current\" href=\"#\" aria-current=\"page\">Поиск видео</a></nav>",
-      "css": ".ds-nav{display:flex;flex-wrap:wrap;align-items:center;gap:32px;min-height:64px;background:#17181c;font-family:system-ui,-apple-system,Segoe UI,sans-serif;font-size:16px;border-bottom:1px solid #34363e}.ds-nav a{display:inline-flex;align-items:center;min-height:44px;text-underline-offset:4px}.ds-brand{color:#f1f2f5;font-weight:650;text-decoration:none}.ds-current{color:#b5a0ff;text-decoration-thickness:2px}.ds-nav a:hover{color:#c6b6ff}.ds-nav a:focus-visible{outline:2px solid #d5c9ff;outline-offset:4px}"
+      "description": "Реализованный хедер этапа 11: min-height 76px, перенос на узком экране, название без изменений. Статический образец маршрутов.",
+      "html": "<nav class=\"ds-nav\" aria-label=\"Основная навигация\"><a class=\"ds-brand\" href=\"/\"><span class=\"ds-mark\"><svg viewBox=\"0 0 24 24\" width=\"24\" height=\"24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\" focusable=\"false\"><path d=\"M4 20V10M10 20V4M16 20v-7M3 20h18\"/></svg></span><span>Аналитика тем</span></a><a class=\"ds-current\" href=\"/\" aria-current=\"page\"><svg viewBox=\"0 0 24 24\" width=\"18\" height=\"18\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\" focusable=\"false\"><circle cx=\"10.5\" cy=\"10.5\" r=\"6.5\"/><path d=\"m16 16 4.5 4.5\"/></svg>Поиск видео</a></nav>",
+      "css": ".ds-nav{display:flex;flex-wrap:wrap;align-items:center;gap:8px 32px;min-height:76px;padding:12px 32px;background:#282137;border-bottom:1px solid #514364;font-family:system-ui,-apple-system,Segoe UI,sans-serif}.ds-nav a{display:inline-flex;align-items:center;gap:10px;min-height:44px;text-underline-offset:4px}.ds-brand{color:#f1f2f5;font-size:18px;font-weight:650;letter-spacing:-.02em;text-decoration:none}.ds-mark{display:grid;place-items:center;width:36px;height:36px;border-radius:10px;background:#b5a0ff;color:#17181c}.ds-current{padding:8px 14px;border-radius:8px;background:#403255;color:#b5a0ff;font-size:14px;font-weight:500;text-decoration:underline;text-decoration-thickness:2px}.ds-nav a:focus-visible{outline:2px solid #d5c9ff;outline-offset:4px}@media(hover:hover){.ds-nav a:hover{color:#c6b6ff}}@media(max-width:639px){.ds-nav{padding:10px 16px;gap:6px 16px}.ds-brand{font-size:16px}.ds-current{padding-inline:10px}}"
     },
     {
-      "name": "Явная заготовка страницы",
+      "name": "Кнопка поиска",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Статический HTML-образец primary-кнопки Naive UI с разрешёнными значениями theme.ts; без API и состояния загрузки.",
+      "html": "<button class=\"ds-primary\" type=\"button\"><svg viewBox=\"0 0 24 24\" width=\"18\" height=\"18\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\" focusable=\"false\"><circle cx=\"10.5\" cy=\"10.5\" r=\"6.5\"/><path d=\"m16 16 4.5 4.5\"/></svg>Искать</button>",
+      "css": ".ds-primary{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:44px;padding:0 14px;border:0;border-radius:8px;background:#b5a0ff;color:#21183b;font:16px system-ui,-apple-system,Segoe UI,sans-serif;cursor:pointer}.ds-primary:focus-visible{outline:2px solid #d5c9ff;outline-offset:4px}.ds-primary:active{background:#a68bea}@media(hover:hover){.ds-primary:hover{background:#c6b6ff}}"
+    },
+    {
+      "name": "Поле темы",
+      "kind": "input",
+      "description": "Статический HTML-образец поля с реальной подписью и подсказкой, не замена runtime-компонента NInput.",
+      "html": "<div class=\"ds-query\"><label for=\"ds-query\">Тема видео <span>(необязательно)</span></label><input id=\"ds-query\" placeholder=\"Например, ремонт автомобиля\" aria-describedby=\"ds-query-hint\" autocomplete=\"off\"><p id=\"ds-query-hint\">Тему можно не указывать — поиск выполнится по выбранным условиям.</p></div>",
+      "css": ".ds-query{font:16px/1.5 system-ui,-apple-system,Segoe UI,sans-serif;color:#f1f2f5}.ds-query label{display:block;margin-bottom:8px}.ds-query label span,.ds-query p{font-size:14px;color:#b5b8c4}.ds-query input{display:block;width:100%;min-width:0;height:44px;padding-inline:12px;border:1px solid #444750;border-radius:8px;background:#17181c;color:#f1f2f5;font:inherit;caret-color:#b5a0ff}.ds-query input::placeholder{color:#b5b8c4}.ds-query p{margin:8px 0 0;overflow-wrap:anywhere}.ds-query input:focus-visible{outline:2px solid #d5c9ff;outline-offset:4px}"
+    },
+    {
+      "name": "Начальное состояние поиска",
       "kind": "card",
       "refersTo": "empty-surface",
-      "description": "Не содержит вымышленных результатов или обещания готового поиска.",
-      "html": "<section class=\"ds-empty\"><h2>Поиск ещё не подключён</h2><p>Здесь появятся запрос, фильтры и найденные видео.</p></section>",
-      "css": ".ds-empty{background:#202126;color:#f1f2f5;border:1px solid #34363e;border-radius:12px;padding:28px 24px;font-family:system-ui,-apple-system,Segoe UI,sans-serif}.ds-empty h2{margin:0 0 12px;font-size:20px;line-height:1.35;font-weight:600}.ds-empty p{margin:0;color:#b5b8c4;font-size:16px;line-height:1.5}"
+      "description": "Реальное initial-состояние подключённого поиска: явный запуск, без автоматического запроса и без вымышленных результатов.",
+      "html": "<section class=\"ds-initial\"><h2>Задайте условия и начните поиск</h2><p>Введите тему или оставьте поле пустым. Фильтры применятся после нажатия «Искать». Автоматической загрузки нет.</p></section>",
+      "css": ".ds-initial{padding:28px 24px;border:1px solid #34363e;border-radius:12px;background:#202126;color:#f1f2f5;font:16px/1.5 system-ui,-apple-system,Segoe UI,sans-serif}.ds-initial h2{margin:0 0 12px;font-size:20px;line-height:1.35;font-weight:600}.ds-initial p{margin:0;overflow-wrap:anywhere}@media(max-width:639px){.ds-initial{padding:24px 20px}}"
+    },
+    {
+      "name": "Действие анализа канала",
+      "kind": "button",
+      "description": "Реальная ссылка-действие из VideoCard; здесь без href, чтобы образец не обещал существующий ID или загруженный анализ.",
+      "html": "<a class=\"ds-analysis\" role=\"link\" tabindex=\"0\" aria-disabled=\"true\"><svg viewBox=\"0 0 24 24\" width=\"18\" height=\"18\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\" focusable=\"false\"><path d=\"M4 20V10M10 20V4M16 20v-7M3 20h18\"/></svg>Анализ канала</a>",
+      "css": ".ds-analysis{display:flex;min-height:44px;align-items:center;justify-content:center;gap:8px;padding:8px 12px;border:1px solid #444750;border-radius:8px;background:#202126;color:#b5a0ff;font:600 16px/1.5 system-ui,-apple-system,Segoe UI,sans-serif;text-decoration:none}.ds-analysis:focus-visible{outline:2px solid #d5c9ff;outline-offset:4px}@media(hover:hover){.ds-analysis:hover{background:#292b32;color:#c6b6ff}}@media(prefers-reduced-motion:no-preference){.ds-analysis{transition:background-color 150ms ease-out,color 150ms ease-out}}"
+    },
+    {
+      "name": "Правило аналитической выборки",
+      "kind": "card",
+      "description": "Реальный блок ChannelPage с неизменным правилом отбора; динамические счётчики, даты и причина остановки намеренно не выдуманы.",
+      "html": "<section class=\"ds-sample\"><h2>Видео длительностью более 3 минут</h2><p>До 30 последних доступных видео строго длиннее 180 секунд. Просматриваем не более 200 записей загрузок и четырёх страниц. Это правило длительности, не классификация формата видео.</p></section>",
+      "css": ".ds-sample{padding:20px;border:1px solid #444750;border-radius:12px;background:#17181c;color:#f1f2f5;font:16px/1.6 system-ui,-apple-system,Segoe UI,sans-serif}.ds-sample h2{margin:0 0 12px;font-size:20px;line-height:1.4}.ds-sample p{margin:8px 0;overflow-wrap:anywhere}"
     }
   ],
   "narrative": {
-    "overview": "Запись значений из текущего кода этапа 5, а не новый визуальный концепт. Техническая фиксация каркаса принята пользователем с открытой браузерной проверкой.",
-    "keyCharacteristics": ["Графитовая основа", "Фиолетовый управления", "Независимые аналитические роли", "Открытая браузерная проверка"],
+    "overview": "Фиксация реализованного интерфейса этапа 11, не новый концепт. Источники — `frontend/src/styles/theme.ts`, `main.css`, `AppHeader.vue`, `SearchForm.vue`, `SearchPage.vue`, `VideoCard.vue` и `ChannelPage.vue`. Пользователь выбрал тёмный фиолетово-графитовый хедер, умеренно компактный поиск и сохранение названия «Аналитика тем». Поиск и анализ канала подключены; прежние описания заготовок больше не действуют.\n\nНаправление согласовано, итоговый вид после реализации ещё не получил финального пользовательского подтверждения. По отчёту `frontend/STAGE_11.md` Chrome fixture-прогон прошёл на ширинах 1440/1100/390/320px: 8 перехваченных fake API-запросов, 0 live API responses и 0 runtime/console/interception ошибок; 16 PNG и browser-report оставлены в игнорируемых артефактах. Проверены поиск, фильтры, заполненная выдача, SVG-график, таблица и возврат; это не полное покрытие error/hover/loading состояний, WCAG-сертификация, проверка физических устройств или полная приёмка продукта.",
+    "keyCharacteristics": [],
     "rules": [],
-    "dos": ["Сохранять семантические роли и общий источник цветов для CSS/Naive UI.", "Сохранять подписи действий, видимый фокус и reduced-motion режим."],
-    "donts": ["Не превращать цвет данных в красно-зелёную оценку успешности.", "Не добавлять настройки, каталог каналов или обязательную страницу видео ради заполнения каркаса.", "Не выдавать source-only токены, тесты или отсутствие screenshot за визуальное согласование."]
+    "dos": [
+      "Сохранять семантические роли и общий источник цветов для CSS/Naive UI.",
+      "Сохранять подписи действий, видимый фокус и reduced-motion режим.",
+      "Сохранять независимость аналитических цветов от фиолетового управления и доступ к точным данным без hover."
+    ],
+    "donts": [
+      "Не превращать цвет данных в красно-зелёную оценку успешности.",
+      "Не добавлять настройки, каталог каналов или обязательную страницу видео ради заполнения каркаса.",
+      "Не выдавать fixture-прогон, unit-тесты или выбранное направление за полную приёмку, WCAG-сертификацию или финальное пользовательское согласование пикселей."
+    ]
   }
 }

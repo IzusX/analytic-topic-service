@@ -3,6 +3,9 @@ import type { GlobalThemeOverrides } from 'naive-ui'
 export const palette = {
   page: '#17181c',
   surface: '#202126',
+  header: '#282137',
+  headerBorder: '#514364',
+  headerActive: '#403255',
   raised: '#292b32',
   border: '#444750',
   divider: '#34363e',
@@ -25,6 +28,9 @@ export const fontFamily = 'system-ui, -apple-system, "Segoe UI", sans-serif'
 export const themeVariables = {
   '--app-page': palette.page,
   '--app-surface': palette.surface,
+  '--app-header': palette.header,
+  '--app-header-border': palette.headerBorder,
+  '--app-header-active': palette.headerActive,
   '--app-raised': palette.raised,
   '--app-border': palette.border,
   '--app-divider': palette.divider,

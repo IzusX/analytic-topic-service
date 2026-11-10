@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import type { VideoOut } from '../../api'
+import SearchIcon from './SearchIcon.vue'
 import { analyticalColors } from '../../styles/theme'
 import { formatCompactCount, formatDuration, formatExactCount, formatRatio, formatUtcDate, isResourceId, knownRatio, noData, ratioLevel, thumbnailUrl } from '../../utils/presentation'
 
@@ -67,7 +68,7 @@ const duration = computed(() => formatDuration(props.video.duration_seconds))
           <div><dt>Просмотры / подписчики:</dt><dd>{{ ratio === null ? '—' : String(ratio).replace('.', ',') + '×' }}</dd></div>
         </dl>
       </details>
-      <RouterLink v-if="channelRoute" :id="`analysis-${video.id}`" class="analysis-action" :to="channelRoute">Анализ канала</RouterLink>
+      <RouterLink v-if="channelRoute" :id="`analysis-${video.id}`" class="analysis-action" :to="channelRoute"><SearchIcon name="analytics" />Анализ канала</RouterLink>
       <p v-else class="analysis-unavailable">Канал для анализа неизвестен</p>
     </div>
   </article>
@@ -92,7 +93,7 @@ const duration = computed(() => formatDuration(props.video.duration_seconds))
   text-decoration: none;
 }
 .video-thumbnail:focus-visible { outline-offset: -4px; }
-.video-thumbnail img { width: 100%; height: 100%; object-fit: cover; }
+.video-thumbnail img { width: 100%; height: 100%; object-fit: cover; outline: 1px solid oklch(1 0 0 / 0.1); outline-offset: -1px; }
 .thumbnail-fallback { padding: 16px; text-align: center; }
 .video-duration {
   position: absolute;
@@ -111,7 +112,7 @@ const duration = computed(() => formatDuration(props.video.duration_seconds))
 .ratio-number { font-size: 15px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 h3 { margin: 0; font-size: 16px; font-weight: 600; line-height: 1.5; }
 .video-title { display: -webkit-box; min-height: 48px; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; color: var(--app-text); text-decoration: none; overflow-wrap: anywhere; }
-.video-title:hover, .channel-name:hover { color: var(--app-accent-hover); }
+@media (hover: hover) { .video-title:hover, .channel-name:hover { color: var(--app-accent-hover); } }
 .channel-name { display: inline-flex; min-height: 44px; align-items: center; color: var(--app-text); font-size: 14px; text-decoration: underline; overflow-wrap: anywhere; }
 p.channel-name { margin: 0; text-decoration: none; }
 .video-metadata, .video-details dl { display: grid; gap: 4px; margin: 0; color: var(--app-muted); font-size: 13px; }
@@ -122,6 +123,8 @@ dd { margin: 0; min-width: 0; font-variant-numeric: tabular-nums; overflow-wrap:
 .video-details[open] summary { margin-bottom: 8px; }
 .full-title { margin: 0 0 8px; color: var(--app-text); overflow-wrap: anywhere; }
 .analysis-action { display: flex; min-height: 44px; align-items: center; justify-content: center; margin-top: auto; padding: 8px 12px; border: 1px solid var(--app-border); border-radius: var(--app-radius-control); color: var(--app-accent); font-weight: 600; text-decoration: none; }
-.analysis-action:hover { background: var(--app-raised); color: var(--app-accent-hover); }
+@media (hover: hover) { .analysis-action:hover { background: var(--app-raised); color: var(--app-accent-hover); } }
+.analysis-action { gap: 8px; }
+@media (prefers-reduced-motion: no-preference) { .analysis-action { transition: background-color 150ms ease-out, color 150ms ease-out; } }
 .analysis-unavailable { margin: 0; color: var(--app-muted); font-size: 13px; }
 </style>

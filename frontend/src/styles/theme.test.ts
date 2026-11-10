@@ -29,7 +29,7 @@ describe('shared theme', () => {
   })
 
   it('keeps body, secondary and control text contrast at least 4.5:1', () => {
-    for (const surface of [palette.page, palette.surface]) {
+    for (const surface of [palette.page, palette.surface, palette.header, palette.headerActive]) {
       expect(contrast(palette.text, surface)).toBeGreaterThanOrEqual(4.5)
       expect(contrast(palette.muted, surface)).toBeGreaterThanOrEqual(4.5)
       expect(contrast(palette.accent, surface)).toBeGreaterThanOrEqual(4.5)

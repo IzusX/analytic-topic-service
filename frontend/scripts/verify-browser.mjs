@@ -210,7 +210,7 @@ async function snapshot(send, name, width) {
 }
 
 try {
-  for (const width of [1440, 390, 320]) {
+  for (const width of [1440, 1100, 390, 320]) {
     progress(`${width}: context and initial navigation`)
     // Separate contexts prevent restored session state from hiding initial/no-auto-load checks.
     const { browserContextId } = await call('Target.createBrowserContext')
