@@ -142,6 +142,9 @@ describe('real search form interactions', () => {
     await details.get('summary').trigger('click')
     expect(details.element.open).toBe(false)
     expect(store.draft.durationRanges).toEqual(['3_to_10m', 'over_60m'])
+    expect(wrapper.get('.duration-disclosure summary').attributes('aria-labelledby')).toBeUndefined()
+    expect(wrapper.get('.duration-disclosure summary').text()).toContain('Длительность видео: Выбрано: 2')
+    expect(wrapper.findAll('[role="combobox"]')).toHaveLength(1)
     expect(wrapper.get('.filters-trigger').text()).toContain('выбрано 4')
     await wrapper.get('.filters-trigger').trigger('click')
     expect(wrapper.get('.filters-trigger').attributes('aria-expanded')).toBe('true')
@@ -438,9 +441,13 @@ describe('request state rendered by the real page and cards', () => {
       min_views: 0, max_views: null, published_after: '2026-01-01T12:00:00Z',
       published_before: '2027-01-01T00:00:00Z', page_token: null,
     }
-    searchVideos.mockResolvedValueOnce(responseFor(applied))
+    store.patchDraft({ query: 'применённая', period: 'month', language: 'ru', minSubscribers: '0', maxSubscribers: '1000', durationRanges: ['3_to_10m', 'over_60m'] })
+    searchVideos.mockImplementationOnce(async request => responseFor(request, { applied: { ...request, published_after: '2026-01-01T12:00:00Z' } }))
     await wrapper.get('.main-search').trigger('click')
     await flushPromises()
+    // Simulate an API-capable restored session with noneditable bounds.
+    store.response = responseFor(applied)
+    await nextTick()
     const labels = wrapper.get('.applied-text').text()
     await wrapper.get('#search-query').setValue('неприменённая')
     await setLanguage(wrapper, 'zh-Hans')
@@ -588,6 +595,7 @@ describe('request state rendered by the real page and cards', () => {
       query: 'применённая', limit: 50, period: 'day', duration_ranges: ['3_to_10m'],
       published_after: '2026-01-31T12:00:00Z', published_before: null, page_token: null,
     }
+    store.patchDraft({ query: 'применённая', period: 'day', durationRanges: ['3_to_10m'] })
     const previous = responseFor(applied)
     searchVideos.mockResolvedValueOnce(previous)
     await wrapper.get('.main-search').trigger('click')
@@ -698,6 +706,7 @@ describe('explicit continuation and local sorting', () => {
     expect(searchVideos).toHaveBeenCalledTimes(1)
     const task = deferred<SearchVideosResponse>()
     searchVideos.mockReturnValueOnce(task.promise)
+    wrapper.get<HTMLButtonElement>('.load-more').element.focus()
     await wrapper.get('.load-more').trigger('click')
     expect(store.pending?.kind).toBe('more')
     expect(searchVideos.mock.calls[1]?.[0].query).toBe('')
@@ -709,6 +718,8 @@ describe('explicit continuation and local sorting', () => {
     expect(wrapper.findAll('.video-title').map(item => item.text())).toEqual(['Второе', 'Третье', 'Первое'])
     expect(wrapper.get('.results-count').text()).toBe('Загружено 3 видео')
     expect(wrapper.find('.load-more').exists()).toBe(false)
+    expect(document.activeElement?.getAttribute('role')).toBe('status')
+    expect(document.activeElement?.textContent).toContain('Добавлено уникальных видео: 1')
     expect(wrapper.text()).toContain('Конец доступной выдачи')
     expect(wrapper.text()).toContain('Добавлено уникальных видео: 1')
     await wrapper.get('#search-sort').setValue('original')

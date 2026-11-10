@@ -64,6 +64,15 @@ describe('ChannelChart', () => {
     expect(mocks.setOption).toHaveBeenCalledTimes(count)
   })
 
+  it.each(['init', 'setOption'] as const)('keeps a readable fallback when chart %s throws', async failure => {
+    mocks[failure].mockImplementationOnce(() => { throw new Error('renderer unavailable') })
+    wrapper = mount(ChannelChart, { props: { videos: [{ id: 'v', title: 'Video' }] } })
+    await nextTick()
+    expect(wrapper.get('[role="status"]').text()).toContain('Точные значения сохранены')
+    expect(wrapper.get('.channel-chart__plot').isVisible()).toBe(false)
+    if (failure === 'setOption') expect(mocks.dispose).toHaveBeenCalledOnce()
+  })
+
   it('supports environments without ResizeObserver or matchMedia and cleans window fallback', () => {
     vi.stubGlobal('ResizeObserver', undefined)
     vi.stubGlobal('matchMedia', undefined)

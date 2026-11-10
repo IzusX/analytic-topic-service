@@ -263,8 +263,9 @@ describe('explicit refresh and retry', () => {
       published_before: '2027-01-01T00:00:00Z', page_token: 'old-page',
     }
     const previous = responseFor(applied, { videos: [{ id: 'old', title: 'Старое видео' }] })
-    searchVideos.mockResolvedValueOnce(previous)
     expect(await store.search()).toBe(true)
+    // Seed an API-only applied snapshot; the editable form cannot submit these bounds.
+    store.response = previous
     store.patchDraft({ query: 'неприменённая', language: 'zh', minSubscribers: '-1', maxSubscribers: '1e3', period: 'year', durationRanges: ['3_to_10m'] })
     const draft = { ...store.draft, durationRanges: [...store.draft.durationRanges] }
     const request: SearchVideosRequest = {
@@ -328,6 +329,7 @@ describe('explicit refresh and retry', () => {
       query: 'тема', limit: 50, period: 'day', duration_ranges: ['up_to_3m'],
       published_after: '2026-01-31T12:00:00Z', published_before: null, page_token: null,
     })
+    store.patchDraft({ query: 'тема', period: 'day', durationRanges: ['up_to_3m'] })
     searchVideos.mockResolvedValueOnce(previous).mockRejectedValueOnce(networkError())
     expect(await store.search()).toBe(true)
     store.patchDraft({ query: 'черновик', period: 'year' })
@@ -404,6 +406,7 @@ describe('cancellation and stale adapters that ignore abort', () => {
   it('aborts and discards a cancelled completion without creating an error', async () => {
     const { store, searchVideos } = harness()
     const previous = responseFor({ query: 'прежняя' })
+    store.patchDraft({ query: 'прежняя' })
     searchVideos.mockResolvedValueOnce(previous)
     expect(await store.search()).toBe(true)
     const task = deferred<SearchVideosResponse>()
@@ -426,6 +429,7 @@ describe('cancellation and stale adapters that ignore abort', () => {
   it.each(['resolve', 'reject'] as const)('guards stale %s and finally while a newer request is pending', async completion => {
     const { store, searchVideos } = harness()
     const previous = responseFor({ query: 'прежняя' })
+    store.patchDraft({ query: 'прежняя' })
     searchVideos.mockResolvedValueOnce(previous)
     expect(await store.search()).toBe(true)
     const older = deferred<SearchVideosResponse>()
@@ -595,6 +599,7 @@ describe('safe failures and backend field mapping', () => {
   ])('rejects a malformed envelope ($label), preserving earlier success instead of faking an empty result', async ({ payload }) => {
     const { store, searchVideos } = harness()
     const previous = responseFor({ query: 'прежняя' }, { videos: [{ id: 'old', title: 'Старое видео' }] })
+    store.patchDraft({ query: 'прежняя' })
     searchVideos.mockResolvedValueOnce(previous).mockResolvedValueOnce(payload as SearchVideosResponse)
     expect(await store.search()).toBe(true)
     expect(await store.search()).toBe(false)

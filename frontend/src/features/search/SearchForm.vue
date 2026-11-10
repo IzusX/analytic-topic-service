@@ -11,6 +11,7 @@ const props = defineProps<{ draft: SearchDraft; errors: SearchErrors; busy: bool
 const emit = defineEmits<{ change: [patch: Partial<SearchDraft>]; submit: []; reset: [] }>()
 const queryInput = ref<InputInst | null>(null)
 const languageInput = ref<SelectInst | null>(null)
+const languageOpen = ref(false)
 const minInput = ref<InputInst | null>(null)
 const maxInput = ref<InputInst | null>(null)
 const filtersOpen = ref(false)
@@ -74,7 +75,7 @@ defineExpose({ focusFirstError })
       <div class="filters-grid">
         <div class="filter-field">
           <label id="language-label" for="search-language">Предпочтительный язык</label>
-          <NSelect ref="languageInput" :value="draft.language" :options="languageOptions" filterable clearable placeholder="Любой язык" role="combobox" aria-labelledby="language-label" :input-props="{ id: 'search-language', 'aria-label': 'Предпочтительный язык', 'aria-describedby': errors.language ? 'language-hint language-error' : 'language-hint', 'aria-invalid': errors.language ? true : undefined }" @update:value="setLanguage" />
+          <NSelect ref="languageInput" :value="draft.language" :options="languageOptions" filterable clearable placeholder="Любой язык" :input-props="{ id: 'search-language', role: 'combobox', 'aria-autocomplete': 'list', 'aria-expanded': languageOpen, 'aria-label': 'Предпочтительный язык', 'aria-describedby': errors.language ? 'language-hint language-error' : 'language-hint', 'aria-invalid': errors.language ? true : undefined }" @update:show="value => languageOpen = value" @update:value="setLanguage" />
           <p v-if="errors.language" id="language-error" class="field-error" role="alert">{{ errors.language }}</p>
         </div>
         <fieldset class="filter-field subscriber-field">
@@ -94,7 +95,7 @@ defineExpose({ focusFirstError })
         <div class="filter-field">
           <span id="duration-label">Длительность видео</span>
           <details ref="durationDetails" class="duration-disclosure">
-            <summary aria-labelledby="duration-label" :aria-describedby="errors.durationRanges ? 'duration-hint duration-error' : 'duration-hint'">{{ draft.durationRanges.length ? `Выбрано: ${draft.durationRanges.length}` : 'Любая длительность' }}</summary>
+            <summary :aria-describedby="errors.durationRanges ? 'duration-hint duration-error' : 'duration-hint'" :aria-invalid="errors.durationRanges ? true : undefined"><span class="sr-only">Длительность видео: </span>{{ draft.durationRanges.length ? `Выбрано: ${draft.durationRanges.length}` : 'Любая длительность' }}</summary>
             <div class="duration-options" role="group" aria-labelledby="duration-label">
               <label v-for="option in durationOptions" :key="option.value"><input type="checkbox" :value="option.value" :checked="draft.durationRanges.includes(option.value)" @change="toggleDuration(option.value, $event)" />{{ option.label }}</label>
               <p id="duration-hint" class="form-hint">Верхняя граница включена: 3:00 — первая группа, 3:01 — вторая. Несколько групп объединяются.</p>
@@ -131,6 +132,7 @@ defineExpose({ focusFirstError })
 .duration-options input { width: 18px; height: 18px; accent-color: var(--app-accent); }
 .filter-footer { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; margin-top: 12px; }
 .filter-footer .form-hint { flex: 1; min-width: 0; margin: 0; }
+.filter-footer > .n-button { min-height: 44px; }
 .field-error { margin: 6px 0 0; color: #ffb4b8; font-size: 13px; }
 .filters-trigger, .mobile-search { display: none; }
 @media (max-width: 1099px) { .filters-grid { grid-template-columns: repeat(2,minmax(0,1fr)); } }

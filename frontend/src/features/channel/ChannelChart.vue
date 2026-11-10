@@ -16,13 +16,20 @@ const props = defineProps<{
   sourceVideoId?: string | undefined
 }>()
 const host = ref<HTMLDivElement | null>(null)
+const unavailable = ref(false)
 const captionId = useId()
 let chart: EChartsType | undefined
 let observer: ResizeObserver | undefined
 let motion: MediaQueryList | undefined
 
 function update(): void {
-  chart?.setOption(chartOption(props.videos, props.median, props.sourceVideoId, motion?.matches ?? false), { notMerge: true })
+  try {
+    chart?.setOption(chartOption(props.videos, props.median, props.sourceVideoId, motion?.matches ?? false), { notMerge: true })
+  } catch {
+    unavailable.value = true
+    chart?.dispose()
+    chart = undefined
+  }
 }
 function resize(): void { chart?.resize() }
 
@@ -30,7 +37,8 @@ onMounted(() => {
   if (!host.value) return
   motion = window.matchMedia?.('(prefers-reduced-motion: reduce)')
   motion?.addEventListener('change', update)
-  chart = init(host.value, undefined, { renderer: 'svg' })
+  try { chart = init(host.value, undefined, { renderer: 'svg' }) }
+  catch { unavailable.value = true; return }
   update()
   if (typeof ResizeObserver !== 'undefined') {
     observer = new ResizeObserver(resize)
@@ -51,7 +59,8 @@ onBeforeUnmount(() => {
 
 <template>
   <figure class="channel-chart" :aria-labelledby="captionId">
-    <div ref="host" class="channel-chart__plot" aria-hidden="true" />
+    <p v-if="unavailable" role="status">График недоступен. Точные значения сохранены в таблице «Исходные данные» и списке видео ниже.</p>
+    <div v-show="!unavailable" ref="host" class="channel-chart__plot" aria-hidden="true" />
     <figcaption :id="captionId">
       Просмотры видео выборки по дате публикации, от старых к новым. Золотая линия — медиана,
       если она известна. Неизвестные просмотры оставлены пропусками.

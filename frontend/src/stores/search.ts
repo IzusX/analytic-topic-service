@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { computed, reactive, ref, shallowRef, watch } from 'vue'
-import { searchCacheKey, useSessionCacheStore } from './sessionCache'
+import { isSearchResponse, searchCacheKey, useSessionCacheStore } from './sessionCache'
 import type { SearchSnapshot } from './sessionCache'
 import { ApiError, createConfiguredApiClient } from '../api'
 import type { ApiClient, SearchVideosRequest, SearchVideosResponse, VideoOut } from '../api'
@@ -41,28 +41,15 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-function isSearchResponse(value: unknown): value is SearchVideosResponse {
-  if (!isRecord(value) || !isRecord(value.applied)) return false
-  const applied = value.applied
-  return isRecord(value)
-    && typeof value.query === 'string'
-    && isRecord(value.applied)
-    && (value.applied.query === undefined || typeof value.applied.query === 'string')
-    && (value.applied.duration_ranges === undefined || (Array.isArray(value.applied.duration_ranges)
-      && value.applied.duration_ranges.every(range => ['up_to_3m', '3_to_10m', '10_to_30m', '30_to_60m', 'over_60m'].includes(range))))
-    && (value.applied.period === undefined || ['all', 'day', 'week', 'month', 'year'].includes(value.applied.period as string))
-    && (value.applied.limit === undefined || (typeof value.applied.limit === 'number'
-      && Number.isInteger(value.applied.limit) && value.applied.limit >= 1 && value.applied.limit <= 50))
-    && ['published_after', 'published_before', 'relevance_language'].every(key => applied[key] == null || typeof applied[key] === 'string')
-    && ['min_views', 'max_views', 'min_subscribers', 'max_subscribers'].every(key => applied[key] == null
-      || (typeof applied[key] === 'number' && Number.isSafeInteger(applied[key]) && applied[key] >= 0))
-    && (value.applied.page_token == null || isPageToken(value.applied.page_token))
-    && Array.isArray(value.videos)
-    && value.videos.every(video => isRecord(video) && typeof video.id === 'string' && typeof video.title === 'string')
-    && typeof value.fetched_at === 'string'
-    && (value.next_page_token == null || isPageToken(value.next_page_token))
-    && [value.items_scanned, value.matched_count, value.quota_used_estimate]
-      .every(count => typeof count === 'number' && Number.isSafeInteger(count) && count >= 0)
+function matchesAction(result: SearchVideosResponse, action: SearchAction): boolean {
+  const expected = copyRequest(action.request)
+  const applied = copyRequest(result.applied)
+  // A first-page relative search may acquire a server-generated lower boundary.
+  // Explicit bounds and all continuation bounds must still match exactly.
+  if (action.kind !== 'more' && (expected.period ?? 'all') !== 'all' && !expected.published_after) {
+    delete applied.published_after
+  }
+  return result.query === (expected.query ?? '') && appliedKey(applied) === appliedKey(expected)
 }
 
 function isAbortError(error: unknown): boolean {
@@ -216,9 +203,7 @@ export function createSearchStore(
       try {
         const result = await apiFactory().searchVideos(copyRequest(snapshot.request), { signal: activeController.signal })
         if (id !== requestId || activeController.signal.aborted) return false
-        if (!isSearchResponse(result)
-          || (snapshot.kind === 'more' && (appliedKey(result.applied) !== appliedKey(snapshot.request)
-            || result.query !== (snapshot.request.query ?? '')))) {
+        if (!isSearchResponse(result) || !matchesAction(result, snapshot)) {
           throw new ApiError('Сервис вернул некорректный ответ.', { code: 'invalid_response', retryable: true })
         }
         if (snapshot.kind === 'more') {

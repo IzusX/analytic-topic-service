@@ -15,6 +15,14 @@ import type { SortMode } from '../features/search/results'
 const search = useSearchStore()
 const form = ref<{ focusFirstError: () => Promise<void> } | null>(null)
 const videos = computed(() => search.sortedVideos)
+const paginationStatus = ref<HTMLElement | null>(null)
+async function loadMore() {
+  const button = document.activeElement
+  await search.loadMore()
+  await nextTick()
+  // A terminal page removes the focused button; retain a useful keyboard position.
+  if (button instanceof HTMLElement && !button.isConnected) paginationStatus.value?.focus({ preventScroll: true })
+}
 function changeSort(event: Event) {
   search.setSort((event.target as HTMLSelectElement).value as SortMode)
 }
@@ -107,9 +115,9 @@ onBeforeRouteLeave(to => {
         <p>Из {{ search.totalItemsScanned }} проверенных кандидатов ни одно видео не подошло по условиям. Можно изменить фильтры и нажать «Искать».</p>
         <p v-if="search.response.next_page_token" class="helper">У источника есть продолжение: пустая обработанная страница не означает отсутствие совпадений на всём YouTube.</p>
       </section>
-      <p v-if="search.lastAddedCount !== null" class="page-note" role="status">{{ search.lastAddedCount === 0 ? 'На последней странице новых уникальных видео нет.' : `Добавлено уникальных видео: ${search.lastAddedCount}.` }}</p>
+      <p v-if="search.lastAddedCount !== null" ref="paginationStatus" class="page-note" role="status" tabindex="-1">{{ search.lastAddedCount === 0 ? 'На последней странице новых уникальных видео нет.' : `Добавлено уникальных видео: ${search.lastAddedCount}.` }}</p>
       <div class="pagination-actions">
-        <NButton v-if="search.canLoadMore || search.pending?.kind === 'more'" class="load-more" attr-type="button" :disabled="search.busy" :loading="search.pending?.kind === 'more'" @click="search.loadMore">Показать ещё</NButton>
+        <NButton v-if="search.canLoadMore || search.pending?.kind === 'more'" class="load-more" attr-type="button" :disabled="search.busy" :loading="search.pending?.kind === 'more'" @click="loadMore">Показать ещё</NButton>
         <p v-else-if="search.paginationStopped" class="page-note">Источник повторил токен продолжения. Догрузка остановлена, чтобы не запрашивать ту же страницу снова. Можно явно обновить выдачу.</p>
         <p v-else-if="!search.response.next_page_token" class="page-note">Конец доступной выдачи по текущим условиям.</p>
       </div>

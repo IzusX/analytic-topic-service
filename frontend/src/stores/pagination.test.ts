@@ -26,11 +26,14 @@ function deferred<T>() {
 async function firstPage(h: ReturnType<typeof harness>, next = 'one') {
   h.store.patchDraft({ query: 'original', period: 'month', language: 'ru', durationRanges: ['up_to_3m'], minSubscribers: '0' })
   h.searchVideos.mockImplementationOnce(async request => page(request, {
-    applied: { ...request, published_after: '2026-01-01T00:00:00Z', published_before: '2026-02-01T00:00:00Z', min_views: 0 },
+    applied: { ...request, published_after: '2026-01-01T00:00:00Z' },
     videos: [{ id: 'a', title: 'first', view_count: null }, { id: 'a', title: 'duplicate', view_count: 50 }],
     matched_count: 2, next_page_token: next,
   }))
   expect(await h.store.search()).toBe(true)
+  // API-only bounds can be restored from a session, but cannot be submitted by the form.
+  h.store.response = { ...h.store.response!, applied: { ...h.store.response!.applied,
+    published_before: '2026-02-01T00:00:00Z', min_views: 0 } }
 }
 
 describe('explicit pagination', () => {

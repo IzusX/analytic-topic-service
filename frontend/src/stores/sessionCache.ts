@@ -67,16 +67,18 @@ const request: Guard = v => shape(v, {}, {
   ...fields('published_after published_before relevance_language', nullable(string)),
   ...fields('min_views max_views min_subscribers max_subscribers', nullable(integer)), page_token: nullable(token),
 })
-const searchResponse: Guard = v => shape(v, {
-  query: string, applied: request, videos: array(video), fetched_at: string,
-  items_scanned: integer, matched_count: integer, quota_used_estimate: integer,
-}, { next_page_token: nullable(token), order: string })
+export function isSearchResponse(v: unknown): v is SearchVideosResponse {
+  return shape(v, {
+    query: string, applied: request, videos: array(video), fetched_at: string,
+    items_scanned: integer, matched_count: integer, quota_used_estimate: integer,
+  }, { next_page_token: nullable(token), order: string })
+}
 const draftGuard: Guard = v => shape(v, {
   ...fields('query language minSubscribers maxSubscribers', string), period: oneOf(periods), durationRanges: array(oneOf(ranges)),
 })
 function snapshotGuard(v: unknown): v is SearchSnapshot {
   return shape(v, {
-    response: searchResponse, sourceVideos: array(video), sortMode: oneOf(sortOptions.map(option => option.value)),
+    response: isSearchResponse, sourceVideos: array(video), sortMode: oneOf(sortOptions.map(option => option.value)),
     ...fields('pageCount totalItemsScanned totalQuotaUsedEstimate', integer), lastAddedCount: nullable(integer),
     paginationStopped: boolean, consumedTokens: array(token), scrollY: number, sourceVideoId: nullable(string),
   }) && Array.isArray(v.sourceVideos) && new Set(v.sourceVideos.map(item => (item as VideoOut).id)).size === v.sourceVideos.length
